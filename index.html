@@ -310,20 +310,68 @@ function generateRoomId() {
 }
 
 function generateRotation(np, pages) {
-  // Shift 0 means "topic creator writes" — always avoid it.
-  if (np <= 2) {
-    // For 2 players, only shift 1 is available (always the other person)
+  // Goal: for each story, the sequence of writers should:
+  //   1. Never start with the topic creator (shift 0)
+  //   2. Alternate between players as much as possible
+  //   3. Consecutive rounds should have different writers (different shifts)
+  //
+  // For np=2: alternate shifts [1, 0, 1, 0, ...] — starts with the other person
+  // For np>=3: use shifts from 1..np-1 with pair-swapping for variety,
+  //            then cycle through all shifts (including 0) for remaining rounds
+
+  if (np === 1) {
+    // Solo: only one player
+    return new Array(pages).fill(0);
+  }
+
+  if (np === 2) {
+    // Alternate: other person first, then creator, then other, ...
     const shifts = [];
-    for (let i = 0; i < pages; i++) shifts.push(1);
+    for (let i = 0; i < pages; i++) shifts.push(i % 2 === 0 ? 1 : 0);
     return shifts;
   }
-  // Build varied shift sequence from 1..np-1
-  // Pattern: swap adjacent pairs (2,1,4,3,...) to vary "previous writer"
-  const available = [];
-  for (let i = 1; i < np; i++) available.push(i);
-  for (let i = 1; i < available.length; i += 2) [available[i-1], available[i]] = [available[i], available[i-1]];
-  const shifts = [];
-  for (let i = 0; i < pages; i++) shifts.push(available[i % available.length]);
+
+  // np >= 3
+  // First round: pick from 1..np-1 (avoid 0 = topic creator)
+  // Subsequent rounds: use all shifts 0..np-1 but reorder for variety
+  // Build a full sequence that doesn't repeat the same shift consecutively
+
+  // Start with shift != 0, then cycle through all np shifts in a varied order
+  const firstPool = [];
+  for (let i = 1; i < np; i++) firstPool.push(i);
+  // Swap pairs for variety: [2,1,4,3,...] 
+  for (let i = 1; i < firstPool.length; i += 2) {
+    [firstPool[i - 1], firstPool[i]] = [firstPool[i], firstPool[i - 1]];
+  }
+
+  // Full pool including 0, but reordered so 0 isn't adjacent to itself
+  // Use pattern: firstPool[0], 0, firstPool[1], firstPool[2], 0, ...
+  // Actually simpler: just build a long sequence ensuring no consecutive duplicates
+  const shifts = [firstPool[0]]; // round 0: guaranteed not 0
+  let usedFirst = 1;
+
+  for (let r = 1; r < pages; r++) {
+    const prev = shifts[r - 1];
+    // Try to pick from firstPool first (non-zero shifts), then allow 0
+    let picked = false;
+    // Try next from firstPool
+    while (usedFirst < firstPool.length) {
+      if (firstPool[usedFirst] !== prev) {
+        shifts.push(firstPool[usedFirst]);
+        usedFirst++;
+        picked = true;
+        break;
+      }
+      usedFirst++;
+    }
+    if (!picked) {
+      // firstPool exhausted — pick any shift different from prev
+      // Cycle through 0..np-1
+      const candidate = (prev + 1) % np;
+      shifts.push(candidate);
+    }
+  }
+
   return shifts;
 }
 
@@ -774,6 +822,6 @@ function showCopyFeedback(msg) {
   el._timer = setTimeout(() => { el.style.opacity = '0'; }, 2500);
 }
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.7</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.8</div>
 </body>
 </html>
