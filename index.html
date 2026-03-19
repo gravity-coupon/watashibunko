@@ -302,12 +302,20 @@ function generateRoomId() {
 }
 
 function generateRotation(np, pages) {
-  const shifts = [0];
-  if (np <= 2) { for (let i = 1; i < pages; i++) shifts.push(i % np); return shifts; }
+  // Shift 0 means "topic creator writes" — always avoid it.
+  if (np <= 2) {
+    // For 2 players, only shift 1 is available (always the other person)
+    const shifts = [];
+    for (let i = 0; i < pages; i++) shifts.push(1);
+    return shifts;
+  }
+  // Build varied shift sequence from 1..np-1
+  // Pattern: swap adjacent pairs (2,1,4,3,...) to vary "previous writer"
   const available = [];
   for (let i = 1; i < np; i++) available.push(i);
   for (let i = 1; i < available.length; i += 2) [available[i-1], available[i]] = [available[i], available[i-1]];
-  for (let i = 0; i < pages - 1; i++) shifts.push(available[i % available.length]);
+  const shifts = [];
+  for (let i = 0; i < pages; i++) shifts.push(available[i % available.length]);
   return shifts;
 }
 
@@ -524,6 +532,8 @@ function handleTopicFromPlayer(pIdx, topic) {
   const count = topicsCollected.filter(t => t !== undefined).length;
   // Broadcast topic progress to all guests
   broadcast({ type: 'topicProgress', count: count, total: players.length });
+  // Also update host's own waiting screen
+  if (isHost) updateWaiting(count, players.length);
   if (count === players.length) {
     topicsComplete = true;
     const np = players.length;
@@ -702,6 +712,6 @@ function playAgain() {
   showScreen('title');
 }
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.4</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.6</div>
 </body>
 </html>
