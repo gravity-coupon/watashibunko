@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>わたし文庫 - みんなで繋ぐ即興リレー小説</title>
+<link href="https://fonts.googleapis.com/css2?family=Kaisei+Decol:wght@400;700&family=Noto+Serif+JP:wght@400;700;900&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Kaisei Decol', 'Noto Serif JP', serif;
+    color: #eee;
+    min-height: 100vh;
+    background: linear-gradient(160deg, #1a1a2e 0%, #0f0f23 50%, #1a1033 100%);
+  }
+  ::selection { background: rgba(233,69,96,0.27); }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+  .screen { animation: fadeIn 0.4s ease; }
+  button { font-family: inherit; }
+  input, textarea { font-family: inherit; }
+  textarea:focus, input:focus { border-color: #e94560 !important; outline: none; }
+
+  /* Utility */
+  .btn {
+    padding: 14px 32px; border-radius: 12px; font-size: 16px; font-weight: 700;
+    cursor: pointer; transition: all 0.2s ease; letter-spacing: 0.5px; font-family: inherit;
+  }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary { background: linear-gradient(135deg, #e94560, #c73e54); color: #fff; border: none; box-shadow: 0 4px 15px rgba(233,69,96,0.3); }
+  .btn-secondary { background: transparent; color: #e94560; border: 2px solid #e94560; }
+  .btn-gold { background: linear-gradient(135deg, #f0c040, #d4a030); color: #1a1a2e; border: none; box-shadow: 0 4px 15px rgba(240,192,64,0.3); }
+  .btn-ghost { background: rgba(255,255,255,0.05); color: #8899aa; border: 1px solid #2a3a5e; }
+  .btn-full { width: 100%; }
+
+  .card {
+    background: linear-gradient(145deg, #16213e, #1c2a4a);
+    border-radius: 20px; padding: 32px;
+    border: 1px solid #2a3a5e;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  }
+
+  .input-field {
+    width: 100%; padding: 14px 18px; border-radius: 12px;
+    border: 2px solid #2a3a5e; background: rgba(0,0,0,0.3);
+    color: #eee; font-size: 16px; font-family: inherit; outline: none;
+    transition: border-color 0.2s; box-sizing: border-box;
+  }
+  textarea.input-field { resize: vertical; min-height: 100px; }
+
+  .badge {
+    display: inline-block; padding: 4px 12px; border-radius: 20px;
+    font-size: 13px; font-weight: 700;
+  }
+
+  .text-center { text-align: center; }
+  .text-dim { color: #8899aa; }
+  .mb-8 { margin-bottom: 8px; }
+  .mb-16 { margin-bottom: 16px; }
+  .mb-20 { margin-bottom: 20px; }
+  .mb-24 { margin-bottom: 24px; }
+  .mb-32 { margin-bottom: 32px; }
+  .container { max-width: 500px; margin: 0 auto; padding: 40px 20px; }
+  .container-wide { max-width: 600px; margin: 0 auto; padding: 40px 20px; }
+  .hidden { display: none !important; }
+
+  .back-btn {
+    background: none; border: none; color: #8899aa;
+    cursor: pointer; font-size: 14px; margin-bottom: 24px; font-family: inherit;
+  }
+
+  .progress-bar {
+    margin-top: 16px; height: 6px; background: #2a3a5e;
+    border-radius: 3px; overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%; background: linear-gradient(90deg, #4ecdc4, #ff6b81);
+    border-radius: 3px; transition: width 0.5s ease;
+  }
+
+  .page-select-btn {
+    flex: 1; padding: 10px; border-radius: 10px; font-size: 18px;
+    font-weight: 700; cursor: pointer; font-family: inherit;
+    border: 2px solid #2a3a5e; background: transparent; color: #8899aa;
+    transition: all 0.15s ease;
+  }
+  .page-select-btn.active {
+    border-color: #e94560; background: rgba(233,69,96,0.13); color: #e94560;
+  }
+
+  .story-tab {
+    padding: 8px 16px; border-radius: 10px; cursor: pointer;
+    font-size: 14px; font-weight: 700; font-family: inherit;
+    border: 2px solid #2a3a5e; background: transparent; color: #8899aa;
+  }
+  .story-tab.active { border-color: #f0c040; background: rgba(240,192,64,0.13); color: #f0c040; }
+
+  .prev-text-box {
+    background: rgba(0,0,0,0.3); border-radius: 12px; padding: 16px;
+    margin-bottom: 20px; border-left: 3px solid #f0c040;
+  }
+
+  .part-block { margin-bottom: 20px; padding-left: 16px; }
+  .part-block-even { border-left: 3px solid #e94560; }
+  .part-block-odd  { border-left: 3px solid #4ecdc4; }
+
+  .gradient-title {
+    background: linear-gradient(135deg, #ff6b81, #f0c040);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  .room-code {
+    font-size: 40px; font-weight: 900; letter-spacing: 8px;
+    color: #f0c040; font-family: monospace;
+  }
+  .room-input {
+    text-align: center; font-size: 28px; letter-spacing: 6px; font-family: monospace;
+  }
+
+  .badge-gold { background: rgba(240,192,64,0.13); color: #f0c040; border: 1px solid rgba(240,192,64,0.27); }
+  .badge-green { background: rgba(78,205,196,0.13); color: #4ecdc4; border: 1px solid rgba(78,205,196,0.27); }
+  .badge-dim { background: rgba(136,153,170,0.13); color: #8899aa; border: 1px solid rgba(136,153,170,0.27); }
+
+  .char-count { font-size: 13px; text-align: right; margin-bottom: 16px; }
+  .char-warn { color: #e94560; }
+  .char-ok { color: #8899aa; }
+
+  .flex-center { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
+  .flex-col { display: flex; flex-direction: column; gap: 16px; }
+  .flex-row { display: flex; gap: 8px; align-items: center; }
+</style>
+</head>
+<body>
+
+<!-- ====== Title Screen ====== -->
+<div id="screen-title" class="screen container text-center" style="padding-top:60px;">
+  <div style="font-size:72px;" class="mb-8">📖</div>
+  <h1 class="gradient-title mb-8" style="font-size:48px;font-weight:900;letter-spacing:4px;">わたし文庫</h1>
+  <p class="text-dim mb-32" style="font-size:16px;line-height:1.8;">みんなで繋ぐ即興リレー小説ゲーム</p>
+  <div class="flex-col">
+    <button class="btn btn-primary" onclick="showHostSetup()">部屋をつくる</button>
+    <button class="btn btn-secondary" onclick="showJoin()">部屋に参加する</button>
+  </div>
+  <p class="text-dim" style="font-size:13px;margin-top:40px;line-height:1.6;">
+    PeerJSを利用したP2P通信で動作します。<br>サーバーは使わず、ブラウザだけで完結します。
+  </p>
+</div>
+
+<!-- ====== Host Setup Screen ====== -->
+<div id="screen-host" class="screen container hidden">
+  <button class="back-btn" onclick="backToTitle()">← もどる</button>
+  <div class="card">
+    <h2 class="text-center mb-24" style="font-size:24px;">部屋をつくる</h2>
+    <div class="text-center mb-24">
+      <p class="text-dim mb-8" style="font-size:14px;">ルームコード</p>
+      <div id="host-room-code" class="room-code"></div>
+      <p class="text-dim" style="font-size:13px;margin-top:8px;">このコードを他のプレイヤーに共有してください</p>
+    </div>
+    <div class="mb-20">
+      <label class="text-dim" style="font-size:14px;display:block;margin-bottom:6px;">あなたの名前</label>
+      <input id="host-name" class="input-field" placeholder="名前を入力" maxlength="12">
+    </div>
+    <div class="mb-24">
+      <label class="text-dim" style="font-size:14px;display:block;margin-bottom:6px;">ページ数（ラウンド数）</label>
+      <div id="page-select" class="flex-row"></div>
+    </div>
+    <div class="mb-24">
+      <p class="text-dim mb-8" style="font-size:14px;">参加者 (<span id="host-player-count">0</span>人)</p>
+      <div id="host-player-list" class="flex-center"></div>
+    </div>
+    <button id="start-btn" class="btn btn-gold btn-full" onclick="startGame()" disabled>
+      ゲーム開始
+    </button>
+    <p id="start-hint" class="text-dim text-center" style="font-size:13px;margin-top:8px;">2人以上で開始できます</p>
+  </div>
+</div>
+
+<!-- ====== Join Screen ====== -->
+<div id="screen-join" class="screen container hidden">
+  <button class="back-btn" onclick="backToTitle()">← もどる</button>
+  <div class="card">
+    <h2 class="text-center mb-24" style="font-size:24px;">部屋に参加</h2>
+    <div class="mb-20">
+      <label class="text-dim" style="font-size:14px;display:block;margin-bottom:6px;">ルームコード</label>
+      <input id="join-room" class="input-field room-input" placeholder="XXXXX" maxlength="5" oninput="this.value=this.value.toUpperCase()">
+    </div>
+    <div class="mb-24">
+      <label class="text-dim" style="font-size:14px;display:block;margin-bottom:6px;">あなたの名前</label>
+      <input id="join-name" class="input-field" placeholder="名前を入力" maxlength="12">
+    </div>
+    <p id="join-error" class="text-center mb-16" style="color:#e94560;font-size:14px;"></p>
+    <button id="join-btn" class="btn btn-primary btn-full" onclick="joinRoom()">参加する</button>
+  </div>
+</div>
+
+<!-- ====== Lobby Screen (guest waiting) ====== -->
+<div id="screen-lobby" class="screen container hidden">
+  <div class="card text-center">
+    <div style="font-size:48px;" class="mb-16">🎉</div>
+    <h2 style="font-size:22px;" class="mb-8">参加しました！</h2>
+    <p class="text-dim mb-20">ホストがゲームを開始するのを待っています...</p>
+    <div id="lobby-player-list" class="flex-center"></div>
+  </div>
+</div>
+
+<!-- ====== Topic Screen ====== -->
+<div id="screen-topic" class="screen container hidden">
+  <div class="card">
+    <h2 class="text-center mb-8" style="font-size:24px;">お題を決めよう</h2>
+    <p class="text-dim text-center mb-24" style="font-size:14px;">物語の最初のお題を書いてください</p>
+    <div class="mb-16">
+      <input id="topic-input" class="input-field" placeholder="お題を入力..." maxlength="50">
+    </div>
+    <div class="mb-24">
+      <button class="btn btn-ghost btn-full" onclick="randomTopic()" style="padding:10px 16px;font-size:14px;">🎲 ランダム</button>
+    </div>
+    <button class="btn btn-primary btn-full" onclick="submitTopic()">決定</button>
+  </div>
+</div>
+
+<!-- ====== Waiting (after topic/writing submit) ====== -->
+<div id="screen-waiting" class="screen container hidden">
+  <div class="card text-center">
+    <div style="font-size:48px;" class="mb-16">⏳</div>
+    <h2 style="font-size:20px;" class="mb-8">他のプレイヤーを待っています...</h2>
+    <p class="text-dim" style="font-size:14px;"><span id="wait-done">0</span> / <span id="wait-total">0</span> 人が完了</p>
+    <div class="progress-bar"><div id="wait-progress" class="progress-fill" style="width:0%;"></div></div>
+  </div>
+</div>
+
+<!-- ====== Writing Screen ====== -->
+<div id="screen-writing" class="screen container hidden">
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;" class="mb-20">
+      <span id="write-title" class="badge badge-gold">📖</span>
+      <span id="write-round" class="badge badge-dim"></span>
+    </div>
+    <div id="write-prev" class="prev-text-box hidden">
+      <p class="text-dim mb-8" style="font-size:12px;">前のパート：</p>
+      <p id="write-prev-text" style="font-size:15px;line-height:1.8;"></p>
+    </div>
+    <div class="mb-8">
+      <textarea id="write-input" class="input-field" placeholder="物語の続きを書いてください..." maxlength="100" rows="4"
+        oninput="updateCharCount()"></textarea>
+    </div>
+    <p id="write-char" class="char-count char-ok">0 / 100</p>
+    <button class="btn btn-primary btn-full" onclick="submitPart()">送信</button>
+  </div>
+</div>
+
+<!-- ====== Results Screen ====== -->
+<div id="screen-results" class="screen container-wide hidden">
+  <h2 class="gradient-title text-center mb-8" style="font-size:28px;">完成した物語</h2>
+  <p id="results-subtitle" class="text-center text-dim mb-24"></p>
+  <div id="results-tabs" class="flex-center mb-24"></div>
+  <div id="results-story" class="card"></div>
+  <div class="text-center" style="margin-top:32px;">
+    <button class="btn btn-gold" onclick="playAgain()">もう一度遊ぶ</button>
+  </div>
+</div>
+
+<script>
+// ===================== STATE =====================
+let peer = null;
+let connections = [];       // host: connections to guests
+let hostConn = null;        // guest: connection to host
+let isHost = false;
+let myIndex = 0;
+let roomId = "";
+let numPages = 4;
+let players = [];
+let topicsCollected = [];
+let gameState = null;
+let roundDone = new Set();
+let myStoryIndex = -1;
+
+const TOPICS = [
+  "ある日、猫が空を飛んだ","世界一まずい料理を作った男","タイムマシンが壊れた日",
+  "しゃべる自動販売機","月曜日が消えた世界","靴下が片方だけ行方不明になる理由",
+  "夢の中で出会った不思議な店","突然しっぽが生えてきた","逆さまの街",
+  "100年後の夏休み","宇宙人がコンビニでバイトを始めた","魔法が使えるのは寝ている間だけ",
+];
+
+// ===================== HELPERS =====================
+function generateRoomId() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let r = "";
+  for (let i = 0; i < 5; i++) r += chars[Math.floor(Math.random() * chars.length)];
+  return r;
+}
+
+function generateRotation(np, pages) {
+  const shifts = [0];
+  if (np <= 2) { for (let i = 1; i < pages; i++) shifts.push(i % np); return shifts; }
+  const available = [];
+  for (let i = 1; i < np; i++) available.push(i);
+  for (let i = 1; i < available.length; i += 2) [available[i-1], available[i]] = [available[i], available[i-1]];
+  for (let i = 0; i < pages - 1; i++) shifts.push(available[i % available.length]);
+  return shifts;
+}
+
+function getWriterForStoryAtRound(si, round, np, shifts) {
+  return (si + shifts[round]) % np;
+}
+
+// ===================== SCREEN MANAGEMENT =====================
+const screens = ['title','host','join','lobby','topic','waiting','writing','results'];
+function showScreen(name) {
+  screens.forEach(s => {
+    document.getElementById('screen-' + s).classList.toggle('hidden', s !== name);
+  });
+}
+
+function backToTitle() {
+  if (peer) { peer.destroy(); peer = null; }
+  connections = []; hostConn = null;
+  showScreen('title');
+}
+
+// ===================== HOST SETUP =====================
+function showHostSetup() {
+  isHost = true;
+  myIndex = 0;
+  roomId = generateRoomId();
+  document.getElementById('host-room-code').textContent = roomId;
+  renderPageSelect();
+  showScreen('host');
+
+  peer = new Peer('watashibunko-' + roomId, { debug: 0 });
+  peer.on('open', () => {
+    const name = document.getElementById('host-name').value.trim() || 'ホスト';
+    players = [name];
+    renderHostPlayers();
+  });
+  peer.on('connection', (conn) => {
+    conn.on('open', () => {
+      conn.on('data', (data) => handleHostMessage(conn, data));
+    });
+    connections.push(conn);
+  });
+  peer.on('error', (e) => console.error('Peer error', e));
+
+  // Update host name on input
+  document.getElementById('host-name').addEventListener('input', () => {
+    const name = document.getElementById('host-name').value.trim() || 'ホスト';
+    players[0] = name;
+    renderHostPlayers();
+  });
+}
+
+function renderPageSelect() {
+  const cont = document.getElementById('page-select');
+  cont.innerHTML = '';
+  [3,4,5,6,8].forEach(n => {
+    const btn = document.createElement('button');
+    btn.className = 'page-select-btn' + (n === numPages ? ' active' : '');
+    btn.textContent = n;
+    btn.onclick = () => { numPages = n; renderPageSelect(); };
+    cont.appendChild(btn);
+  });
+}
+
+function renderHostPlayers() {
+  const list = document.getElementById('host-player-list');
+  list.innerHTML = '';
+  players.forEach((p, i) => {
+    const span = document.createElement('span');
+    span.className = 'badge ' + (i === 0 ? 'badge-gold' : 'badge-green');
+    span.textContent = (i === 0 ? '👑 ' : '') + p;
+    list.appendChild(span);
+  });
+  document.getElementById('host-player-count').textContent = players.length;
+  const canStart = players.length >= 2 && (document.getElementById('host-name').value.trim() !== '');
+  document.getElementById('start-btn').disabled = !canStart;
+  document.getElementById('start-btn').textContent = 'ゲーム開始（' + players.length + '人）';
+  document.getElementById('start-hint').classList.toggle('hidden', players.length >= 2);
+}
+
+function renderLobbyPlayers() {
+  const list = document.getElementById('lobby-player-list');
+  list.innerHTML = '';
+  players.forEach((p, i) => {
+    const span = document.createElement('span');
+    span.className = 'badge ' + (i === 0 ? 'badge-gold' : 'badge-green');
+    span.textContent = (i === 0 ? '👑 ' : '') + p;
+    list.appendChild(span);
+  });
+}
+
+// ===================== HOST MESSAGE HANDLER =====================
+function handleHostMessage(conn, data) {
+  if (data.type === 'join') {
+    players.push(data.name);
+    conn._playerIndex = players.length - 1;
+    conn._playerName = data.name;
+    conn.send({ type: 'joined', playerIndex: conn._playerIndex, players: [...players] });
+    broadcast({ type: 'playerList', players: [...players] }, conn);
+    renderHostPlayers();
+  } else if (data.type === 'topicSubmit') {
+    handleTopicFromPlayer(conn._playerIndex, data.topic);
+  } else if (data.type === 'partSubmit') {
+    handlePartFromPlayer(conn._playerIndex, data.storyIndex, data.round, data.text);
+  }
+}
+
+function broadcast(msg, exclude) {
+  connections.forEach(c => { if (c !== exclude && c.open) c.send(msg); });
+}
+
+// ===================== JOIN =====================
+function showJoin() {
+  isHost = false;
+  showScreen('join');
+  document.getElementById('join-error').textContent = '';
+}
+
+function joinRoom() {
+  const rid = document.getElementById('join-room').value.trim();
+  const name = document.getElementById('join-name').value.trim();
+  if (rid.length !== 5 || !name) return;
+  document.getElementById('join-error').textContent = '';
+  document.getElementById('join-btn').textContent = '接続中...';
+  document.getElementById('join-btn').disabled = true;
+
+  peer = new Peer(undefined, { debug: 0 });
+  peer.on('open', () => {
+    const conn = peer.connect('watashibunko-' + rid);
+    hostConn = conn;
+    conn.on('open', () => { conn.send({ type: 'join', name }); });
+    conn.on('data', handleGuestMessage);
+    conn.on('error', () => {
+      document.getElementById('join-error').textContent = '接続に失敗しました';
+      document.getElementById('join-btn').textContent = '参加する';
+      document.getElementById('join-btn').disabled = false;
+    });
+  });
+  peer.on('error', () => {
+    document.getElementById('join-error').textContent = 'ルームが見つかりません';
+    document.getElementById('join-btn').textContent = '参加する';
+    document.getElementById('join-btn').disabled = false;
+  });
+  setTimeout(() => {
+    if (document.getElementById('join-btn').textContent === '接続中...') {
+      document.getElementById('join-error').textContent = '接続がタイムアウトしました';
+      document.getElementById('join-btn').textContent = '参加する';
+      document.getElementById('join-btn').disabled = false;
+    }
+  }, 10000);
+}
+
+// ===================== GUEST MESSAGE HANDLER =====================
+function handleGuestMessage(data) {
+  if (data.type === 'joined') {
+    myIndex = data.playerIndex;
+    players = data.players;
+    renderLobbyPlayers();
+    showScreen('lobby');
+  } else if (data.type === 'playerList') {
+    players = data.players;
+    renderLobbyPlayers();
+  } else if (data.type === 'startTopicPhase') {
+    showScreen('topic');
+  } else if (data.type === 'startWriting') {
+    gameState = data.gameState;
+    startWritingRound(gameState.currentRound);
+  } else if (data.type === 'nextRound') {
+    Object.assign(gameState, data.gameState);
+    startWritingRound(gameState.currentRound);
+  } else if (data.type === 'roundProgress') {
+    updateWaiting(data.count, gameState.numPlayers);
+  } else if (data.type === 'showResults') {
+    gameState = data.gameState;
+    showResults();
+  }
+}
+
+// ===================== GAME START =====================
+function startGame() {
+  topicsCollected = new Array(players.length);
+  showScreen('topic');
+  broadcast({ type: 'startTopicPhase' });
+}
+
+// ===================== TOPIC =====================
+function randomTopic() {
+  document.getElementById('topic-input').value = TOPICS[Math.floor(Math.random() * TOPICS.length)];
+}
+
+function submitTopic() {
+  const topic = document.getElementById('topic-input').value.trim();
+  if (!topic) return;
+  if (isHost) {
+    handleTopicFromPlayer(0, topic);
+  } else {
+    hostConn.send({ type: 'topicSubmit', topic });
+  }
+  showWaiting(0, players.length);
+}
+
+function handleTopicFromPlayer(pIdx, topic) {
+  topicsCollected[pIdx] = topic;
+  const count = topicsCollected.filter(t => t !== undefined).length;
+  if (count === players.length) {
+    const np = players.length;
+    const shifts = generateRotation(np, numPages);
+    const stories = topicsCollected.map((t, i) => ({ title: t, parts: [], originalPlayerIndex: i }));
+    gameState = { stories, currentRound: 0, totalRounds: numPages, shifts, numPlayers: np, players: [...players] };
+    broadcast({ type: 'startWriting', gameState: JSON.parse(JSON.stringify(gameState)) });
+    startWritingRound(0);
+  }
+}
+
+// ===================== WRITING =====================
+function startWritingRound(round) {
+  const idx = isHost ? 0 : myIndex;
+  const np = gameState.numPlayers;
+  let si = -1;
+  for (let s = 0; s < np; s++) {
+    if (getWriterForStoryAtRound(s, round, np, gameState.shifts) === idx) { si = s; break; }
+  }
+  myStoryIndex = si;
+  roundDone = new Set();
+
+  document.getElementById('write-title').textContent = '📖 ' + gameState.stories[si].title;
+  document.getElementById('write-round').textContent = (round + 1) + ' / ' + gameState.totalRounds;
+
+  const parts = gameState.stories[si].parts;
+  if (round > 0 && parts.length > 0) {
+    document.getElementById('write-prev').classList.remove('hidden');
+    document.getElementById('write-prev-text').textContent = parts[parts.length - 1].text;
+  } else {
+    document.getElementById('write-prev').classList.add('hidden');
+  }
+
+  document.getElementById('write-input').value = '';
+  updateCharCount();
+  showScreen('writing');
+}
+
+function updateCharCount() {
+  const len = document.getElementById('write-input').value.length;
+  const el = document.getElementById('write-char');
+  el.textContent = len + ' / 100';
+  el.className = 'char-count ' + (len >= 90 ? 'char-warn' : 'char-ok');
+}
+
+function submitPart() {
+  const text = document.getElementById('write-input').value.trim();
+  if (!text) return;
+  if (isHost) {
+    handlePartFromPlayer(0, myStoryIndex, gameState.currentRound, text);
+  } else {
+    hostConn.send({ type: 'partSubmit', storyIndex: myStoryIndex, round: gameState.currentRound, text });
+  }
+  showWaiting(isHost ? 1 : 0, gameState.numPlayers);
+}
+
+function handlePartFromPlayer(pIdx, storyIndex, round, text) {
+  const pName = players[pIdx];
+  gameState.stories[storyIndex].parts.push({ author: pName, text });
+  roundDone.add(pIdx);
+  const doneCount = roundDone.size;
+
+  broadcast({ type: 'roundProgress', count: doneCount });
+  updateWaiting(doneCount, gameState.numPlayers);
+
+  if (doneCount === gameState.numPlayers) {
+    const next = gameState.currentRound + 1;
+    if (next >= gameState.totalRounds) {
+      broadcast({ type: 'showResults', gameState: JSON.parse(JSON.stringify(gameState)) });
+      showResults();
+    } else {
+      gameState.currentRound = next;
+      roundDone = new Set();
+      broadcast({ type: 'nextRound', gameState: JSON.parse(JSON.stringify(gameState)) });
+      startWritingRound(next);
+    }
+  }
+}
+
+// ===================== WAITING =====================
+function showWaiting(done, total) {
+  document.getElementById('wait-done').textContent = done;
+  document.getElementById('wait-total').textContent = total;
+  document.getElementById('wait-progress').style.width = (done / total * 100) + '%';
+  showScreen('waiting');
+}
+
+function updateWaiting(done, total) {
+  document.getElementById('wait-done').textContent = done;
+  document.getElementById('wait-total').textContent = total;
+  document.getElementById('wait-progress').style.width = (done / total * 100) + '%';
+}
+
+// ===================== RESULTS =====================
+let currentStoryView = 0;
+
+function showResults() {
+  currentStoryView = 0;
+  document.getElementById('results-subtitle').textContent = gameState.stories.length + ' つの物語が完成しました';
+  renderResultsTabs();
+  renderStory(0);
+  showScreen('results');
+}
+
+function renderResultsTabs() {
+  const cont = document.getElementById('results-tabs');
+  cont.innerHTML = '';
+  gameState.stories.forEach((s, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'story-tab' + (i === currentStoryView ? ' active' : '');
+    btn.textContent = '物語 ' + (i + 1);
+    btn.onclick = () => { currentStoryView = i; renderResultsTabs(); renderStory(i); };
+    cont.appendChild(btn);
+  });
+}
+
+function renderStory(idx) {
+  const story = gameState.stories[idx];
+  let html = '<h3 style="font-size:22px;text-align:center;margin-bottom:24px;color:#f0c040;">「' + escHtml(story.title) + '」</h3>';
+  story.parts.forEach((part, i) => {
+    html += '<div class="part-block ' + (i % 2 === 0 ? 'part-block-even' : 'part-block-odd') + '">';
+    html += '<p style="font-size:12px;color:#8899aa;margin-bottom:4px;">' + escHtml(part.author) + ' — ページ ' + (i + 1) + '</p>';
+    html += '<p style="font-size:16px;line-height:1.8;">' + escHtml(part.text) + '</p>';
+    html += '</div>';
+  });
+  document.getElementById('results-story').innerHTML = html;
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ===================== PLAY AGAIN =====================
+function playAgain() {
+  if (peer) { peer.destroy(); peer = null; }
+  connections = []; hostConn = null; players = [];
+  gameState = null; topicsCollected = []; roundDone = new Set();
+  showScreen('title');
+}
+</script>
+</body>
+</html>
