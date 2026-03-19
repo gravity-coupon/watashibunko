@@ -462,6 +462,8 @@ function handleGuestMessage(data) {
     renderLobbyPlayers();
   } else if (data.type === 'startTopicPhase') {
     showScreen('topic');
+  } else if (data.type === 'topicProgress') {
+    updateWaiting(data.count, data.total);
   } else if (data.type === 'startWriting') {
     gameState = data.gameState;
     startWritingRound(gameState.currentRound);
@@ -488,13 +490,15 @@ function randomTopic() {
   document.getElementById('topic-input').value = TOPICS[Math.floor(Math.random() * TOPICS.length)];
 }
 
+let topicsComplete = false;
+
 function submitTopic() {
   const topic = document.getElementById('topic-input').value.trim();
   if (!topic) return;
   if (isHost) {
-    const screenBefore = currentScreenName;
+    topicsComplete = false;
     handleTopicFromPlayer(0, topic);
-    if (currentScreenName === screenBefore || currentScreenName === 'topic') {
+    if (!topicsComplete) {
       showWaiting(topicsCollected.filter(t => t !== undefined).length, players.length);
     }
   } else {
@@ -506,7 +510,10 @@ function submitTopic() {
 function handleTopicFromPlayer(pIdx, topic) {
   topicsCollected[pIdx] = topic;
   const count = topicsCollected.filter(t => t !== undefined).length;
+  // Broadcast topic progress to all guests
+  broadcast({ type: 'topicProgress', count: count, total: players.length });
   if (count === players.length) {
+    topicsComplete = true;
     const np = players.length;
     const shifts = generateRotation(np, numPages);
     const stories = topicsCollected.map((t, i) => ({ title: t, parts: [], originalPlayerIndex: i }));
@@ -550,17 +557,16 @@ function updateCharCount() {
   el.className = 'char-count ' + (len >= 90 ? 'char-warn' : 'char-ok');
 }
 
+let roundAdvanced = false;
+
 function submitPart() {
   const text = document.getElementById('write-input').value.trim();
   if (!text) return;
   if (isHost) {
-    // handlePartFromPlayer may synchronously advance the round or show results,
-    // so only show waiting if the round did NOT complete.
-    const roundBefore = gameState.currentRound;
-    const screenBefore = currentScreenName;
-    handlePartFromPlayer(0, myStoryIndex, roundBefore, text);
-    // If handlePartFromPlayer already moved us to a new screen, don't overwrite
-    if (currentScreenName === screenBefore || currentScreenName === 'writing') {
+    roundAdvanced = false;
+    handlePartFromPlayer(0, myStoryIndex, gameState.currentRound, text);
+    // Only show waiting if handlePartFromPlayer did NOT advance the game
+    if (!roundAdvanced) {
       showWaiting(roundDone.size, gameState.numPlayers);
     }
   } else {
@@ -579,6 +585,7 @@ function handlePartFromPlayer(pIdx, storyIndex, round, text) {
   updateWaiting(doneCount, gameState.numPlayers);
 
   if (doneCount === gameState.numPlayers) {
+    roundAdvanced = true;
     const next = gameState.currentRound + 1;
     if (next >= gameState.totalRounds) {
       broadcast({ type: 'showResults', gameState: JSON.parse(JSON.stringify(gameState)) });
@@ -655,5 +662,6 @@ function playAgain() {
   showScreen('title');
 }
 </script>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#445;opacity:0.5;font-family:monospace;">v1.3</div>
 </body>
 </html>
