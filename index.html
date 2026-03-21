@@ -754,12 +754,25 @@ function renderResultsTabs() {
   });
 }
 
+const PLAYER_COLORS = [
+  '#e94560','#4ecdc4','#f0c040','#a78bfa','#fb923c',
+  '#34d399','#f472b6','#60a5fa','#fbbf24','#c084fc',
+  '#f87171','#2dd4bf','#facc15','#818cf8','#fb7185',
+  '#38bdf8',
+];
+
+function getPlayerColor(authorName) {
+  const idx = (gameState.players || []).indexOf(authorName);
+  return PLAYER_COLORS[Math.max(0, idx) % PLAYER_COLORS.length];
+}
+
 function renderStory(idx) {
   const story = gameState.stories[idx];
   let html = '<h3 style="font-size:22px;text-align:center;margin-bottom:24px;color:#f0c040;">「' + escHtml(story.title) + '」</h3>';
   story.parts.forEach((part, i) => {
-    html += '<div class="part-block ' + (i % 2 === 0 ? 'part-block-even' : 'part-block-odd') + '">';
-    html += '<p style="font-size:12px;color:#8899aa;margin-bottom:4px;">' + escHtml(part.author) + ' — ページ ' + (i + 1) + '</p>';
+    const color = getPlayerColor(part.author);
+    html += '<div class="part-block" style="border-left:3px solid ' + color + ';">';
+    html += '<p style="font-size:12px;margin-bottom:4px;"><span style="color:' + color + ';font-weight:700;">' + escHtml(part.author) + '</span> <span style="color:#8899aa;">— ページ ' + (i + 1) + '</span></p>';
     html += '<p style="font-size:16px;line-height:1.8;">' + escHtml(part.text) + '</p>';
     html += '</div>';
   });
@@ -833,6 +846,6 @@ function showCopyFeedback(msg) {
   el._timer = setTimeout(() => { el.style.opacity = '0'; }, 2500);
 }
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.15</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.16</div>
 </body>
 </html>
