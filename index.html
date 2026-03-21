@@ -397,7 +397,7 @@ function showHostSetup() {
 function renderPageSelect() {
   const cont = document.getElementById('page-select');
   cont.innerHTML = '';
-  [3,4,5,6,8].forEach(n => {
+  [3,4,5,6,8,10,12,16].forEach(n => {
     const btn = document.createElement('button');
     btn.className = 'page-select-btn' + (n === numPages ? ' active' : '');
     btn.textContent = n;
@@ -785,6 +785,6 @@ function showCopyFeedback(msg) {
   el._timer = setTimeout(() => { el.style.opacity = '0'; }, 2500);
 }
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.11</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.12</div>
 </body>
 </html>
