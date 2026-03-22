@@ -613,7 +613,20 @@ function handleHostMessage(conn, data) {
       });
       return;
     }
-    // Normal new join
+
+    // Game already in progress and this is a new name — spectator mode
+    if (gamePhase !== 'lobby' && gamePhase !== 'idle') {
+      conn._playerName = data.name;
+      conn._isSpectator = true;
+      conn.send({
+        type: 'spectatorState',
+        gameState: gameState ? JSON.parse(JSON.stringify(gameState)) : null,
+        gamePhase,
+      });
+      return;
+    }
+
+    // Normal new join (lobby phase)
     players.push(data.name);
     conn._playerIndex = players.length - 1;
     conn._playerName = data.name;
@@ -794,6 +807,14 @@ function handleGuestMessage(data) {
     clearGuestState();
     if (peer) { peer.destroy(); peer = null; }
     hostConn = null;
+  } else if (data.type === 'spectatorState') {
+    // Spectator mode — show current stories read-only
+    gameState = data.gameState;
+    if (gameState) {
+      showResults();
+      // Replace subtitle to indicate spectating
+      document.getElementById('results-subtitle').textContent = '👀 観戦中 — 物語が進行中です';
+    }
   }
 }
 
@@ -1159,6 +1180,6 @@ window.addEventListener('load', () => {
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.27</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.28</div>
 </body>
 </html>
