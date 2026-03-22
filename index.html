@@ -224,10 +224,11 @@
 
 <!-- ====== Lobby Screen (guest waiting) ====== -->
 <div id="screen-lobby" class="screen container hidden">
+  <button class="back-btn" onclick="leaveLobby()">← もどる</button>
   <div class="card text-center">
     <div style="font-size:48px;" class="mb-16">🎉</div>
-    <h2 style="font-size:22px;" class="mb-8">参加しました！</h2>
-    <p class="text-dim mb-20">ホストがゲームを開始するのを待っています...</p>
+    <h2 id="lobby-title" style="font-size:22px;" class="mb-8">参加しました！</h2>
+    <p id="lobby-subtitle" class="text-dim mb-20">ホストがゲームを開始するのを待っています...</p>
     <div id="lobby-player-list" class="flex-center"></div>
   </div>
 </div>
@@ -517,6 +518,18 @@ function backToTitle() {
   showScreen('title');
 }
 
+function leaveLobby() {
+  // Guest leaves the lobby before game starts
+  if (hostConn && hostConn.open) {
+    hostConn.send({ type: 'leave', playerIndex: myIndex });
+  }
+  if (peer) { peer.destroy(); peer = null; }
+  guestConnGen++;
+  hostConn = null;
+  clearGuestState();
+  showScreen('title');
+}
+
 function dismissDisconnect() {
   document.getElementById('disconnect-overlay').style.display = 'none';
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
@@ -660,6 +673,17 @@ function handleHostMessage(conn, data) {
     }
 
     // Normal new join (lobby phase)
+    // Check for duplicate name in lobby (e.g. guest reloaded)
+    const lobbyDup = players.indexOf(data.name);
+    if (lobbyDup >= 1) {
+      // Same name already in lobby — replace the old connection
+      conn._playerIndex = lobbyDup;
+      conn._playerName = data.name;
+      connections = connections.filter(c => c._playerIndex !== lobbyDup);
+      connections.push(conn);
+      conn.send({ type: 'joined', playerIndex: lobbyDup, players: [...players] });
+      return;
+    }
     players.push(data.name);
     conn._playerIndex = players.length - 1;
     conn._playerName = data.name;
@@ -669,6 +693,18 @@ function handleHostMessage(conn, data) {
     broadcast({ type: 'playerList', players: [...players] }, conn);
     renderHostPlayers();
     saveHostState();
+  } else if (data.type === 'leave') {
+    // Guest leaving the lobby
+    const idx = data.playerIndex;
+    if (idx >= 1 && idx < players.length && gamePhase === 'lobby') {
+      players.splice(idx, 1);
+      connections = connections.filter(c => c._playerIndex !== idx);
+      // Reindex remaining connections
+      connections.forEach(c => { if (c._playerIndex > idx) c._playerIndex--; });
+      broadcast({ type: 'playerList', players: [...players] });
+      renderHostPlayers();
+      saveHostState();
+    }
   } else if (data.type === 'topicSubmit') {
     handleTopicFromPlayer(conn._playerIndex, data.topic);
   } else if (data.type === 'partSubmit') {
@@ -792,6 +828,8 @@ function handleGuestMessage(data) {
   if (data.type === 'joined') {
     myIndex = data.playerIndex;
     players = data.players;
+    document.getElementById('lobby-title').textContent = '参加しました！';
+    document.getElementById('lobby-subtitle').textContent = 'ホストがゲームを開始するのを待っています...';
     renderLobbyPlayers();
     document.getElementById('disconnect-overlay').style.display = 'none';
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
@@ -870,8 +908,8 @@ function handleGuestMessage(data) {
         span.textContent = (i === 0 ? '👑 ' : '') + p;
         document.getElementById('lobby-player-list').appendChild(span);
       });
-      document.querySelector('#screen-lobby h2').textContent = '👀 観戦中';
-      document.querySelector('#screen-lobby p.text-dim').textContent = 'プレイヤーがタイトルを決めています...';
+      document.getElementById('lobby-title').textContent = '👀 観戦中';
+      document.getElementById('lobby-subtitle').textContent = 'プレイヤーがタイトルを決めています...';
     }
   } else if (data.type === 'spectatorUpdate') {
     // Live update for spectators
@@ -1298,7 +1336,7 @@ window.addEventListener('load', () => {
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.39</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.40</div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#f0c040;opacity:0.7;font-family:monospace;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>
 </body>
 </html>
