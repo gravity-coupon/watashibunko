@@ -530,6 +530,9 @@ function showHostSetup() {
   roomId = generateRoomId();
   gamePhase = 'lobby';
   document.getElementById('host-room-code').textContent = roomId;
+  // Prefill saved name
+  const savedName = (function() { try { return localStorage.getItem('watashibunko_name') || ''; } catch(e) { return ''; } })();
+  if (savedName) document.getElementById('host-name').value = savedName;
   renderPageSelect();
   showScreen('host');
 
@@ -665,6 +668,9 @@ function showJoin() {
   isHost = false;
   showScreen('join');
   document.getElementById('join-error').textContent = '';
+  // Prefill saved name
+  const savedName = (function() { try { return localStorage.getItem('watashibunko_name') || ''; } catch(e) { return ''; } })();
+  if (savedName && !document.getElementById('join-name').value) document.getElementById('join-name').value = savedName;
 }
 
 function joinRoom(rejoinInfo) {
@@ -1115,6 +1121,9 @@ function escHtml(s) {
 
 // ===================== PLAY AGAIN =====================
 function playAgain() {
+  // Save player name for next game
+  const myName = isHost ? (players[0] || '') : (players[myIndex] || '');
+  if (myName) { try { localStorage.setItem('watashibunko_name', myName); } catch(e) {} }
   // Notify guests and spectators that the game is over
   if (isHost) {
     broadcast({ type: 'gameEnd' });
@@ -1240,6 +1249,6 @@ window.addEventListener('load', () => {
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.35</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.36</div>
 </body>
 </html>
