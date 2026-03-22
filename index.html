@@ -508,6 +508,10 @@ function showScreen(name) {
 }
 
 function backToTitle() {
+  // If host is in lobby, notify guests to disband
+  if (isHost && gamePhase === 'lobby') {
+    broadcast({ type: 'hostDisbanded' });
+  }
   if (peer) { peer.destroy(); peer = null; }
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
   guestConnGen++;
@@ -900,6 +904,14 @@ function handleGuestMessage(data) {
     clearGuestState();
     if (peer) { peer.destroy(); peer = null; }
     hostConn = null;
+  } else if (data.type === 'hostDisbanded') {
+    // Host closed the lobby — return to title
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    guestConnGen++;
+    clearGuestState();
+    if (peer) { peer.destroy(); peer = null; }
+    hostConn = null;
+    showScreen('title');
   } else if (data.type === 'spectatorState') {
     // Spectator mode — show current stories or waiting message
     gameState = data.gameState;
@@ -1344,7 +1356,7 @@ window.addEventListener('load', () => {
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.42</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.43</div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#f0c040;opacity:0.7;font-family:monospace;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>
 </body>
 </html>
