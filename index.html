@@ -633,7 +633,9 @@ function handleGuestMessage(data) {
     } else if (phase === 'topic') {
       showScreen('topic');
     } else if (phase === 'writing' && gameState) {
+      isRestoring = true;
       startWritingRound(gameState.currentRound);
+      isRestoring = false;
       if (data.playerAlreadySubmitted) {
         mySubmitted = true;
         document.getElementById('write-submitted-msg').classList.remove('hidden');
@@ -715,6 +717,8 @@ function handleTopicFromPlayer(pIdx, topic) {
 }
 
 // ===================== WRITING =====================
+let isRestoring = false; // flag to prevent roundDone reset during host restore
+
 function startWritingRound(round) {
   const idx = isHost ? 0 : myIndex;
   const np = gameState.numPlayers;
@@ -725,7 +729,9 @@ function startWritingRound(round) {
   myStoryIndex = si;
   mySubmitted = false;
   myLastSubmittedText = "";
-  roundDone = new Set();
+  if (!isRestoring) {
+    roundDone = new Set();
+  }
 
   document.getElementById('write-title').textContent = '📖 ' + gameState.stories[si].title;
   document.getElementById('write-round').textContent = (round + 1) + ' / ' + gameState.totalRounds;
@@ -742,7 +748,7 @@ function startWritingRound(round) {
   document.getElementById('write-submitted-msg').classList.add('hidden');
   document.getElementById('write-submit-btn').textContent = '送信';
   updateCharCount();
-  updateWriteProgress(0, np);
+  updateWriteProgress(isRestoring ? roundDone.size : 0, np);
   showScreen('writing');
 }
 
@@ -981,15 +987,22 @@ window.addEventListener('load', () => {
       renderHostPlayers(); saveHostState();
     });
   } else if (gamePhase === 'topic') {
-    initHostPeer(roomId);
     showScreen('topic');
   } else if (gamePhase === 'writing' && gameState) {
+    isRestoring = true;
     startWritingRound(gameState.currentRound);
+    // Restore host's own submitted state if applicable
+    if (roundDone.has(0)) {
+      mySubmitted = true;
+      document.getElementById('write-submitted-msg').classList.remove('hidden');
+      document.getElementById('write-submit-btn').textContent = '再提出';
+    }
+    isRestoring = false;
   } else if (gamePhase === 'results' && gameState) {
     showResults();
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.17</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.18</div>
 </body>
 </html>
