@@ -980,7 +980,6 @@ function handleGuestMessage(data) {
     gameState = data.gameState;
     if (gameState) {
       if (currentScreenName !== 'results') {
-        // First time getting gameState (e.g. was on lobby waiting) — switch to results
         showResults();
       } else {
         const wasViewing = currentStoryView;
@@ -989,6 +988,13 @@ function handleGuestMessage(data) {
       }
       if (data.gamePhase === 'results') {
         document.getElementById('results-subtitle').textContent = gameState.stories.length + ' つの物語が完成しました';
+        // Game finished — release spectator (same as gameEnd)
+        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+        guestConnGen++;
+        isSpectator = false;
+        clearGuestState();
+        if (peer) { peer.destroy(); peer = null; }
+        hostConn = null;
       } else {
         document.getElementById('results-subtitle').textContent = '👀 観戦中 — 物語が進行中です（ラウンド ' + (gameState.currentRound + 1) + '/' + gameState.totalRounds + '）';
       }
@@ -1427,7 +1433,7 @@ window.addEventListener('load', () => {
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.52</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.53</div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#f0c040;opacity:0.7;font-family:monospace;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>
 </body>
 </html>
