@@ -128,9 +128,31 @@
   .flex-center { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
   .flex-col { display: flex; flex-direction: column; gap: 16px; }
   .flex-row { display: flex; gap: 8px; align-items: center; }
+
+  .disconnect-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.85); z-index: 1000;
+    display: flex; align-items: center; justify-content: center;
+    animation: fadeIn 0.3s ease;
+  }
+  .disconnect-box {
+    background: linear-gradient(145deg, #16213e, #1c2a4a);
+    border-radius: 20px; padding: 32px; max-width: 400px; width: 90%;
+    border: 1px solid #2a3a5e; text-align: center;
+  }
 </style>
 </head>
 <body>
+<div id="disconnect-overlay" class="disconnect-overlay" style="display:none;">
+  <div class="disconnect-box">
+    <div style="font-size:48px;margin-bottom:16px;">🔄</div>
+    <h2 style="font-size:20px;margin-bottom:8px;">ホストに再接続中...</h2>
+    <p class="text-dim" style="font-size:14px;margin-bottom:20px;line-height:1.6;">
+      自動で再接続を試みています。<br>しばらくお待ちください。
+    </p>
+    <button class="btn btn-ghost" onclick="dismissDisconnect()" style="font-size:13px;padding:10px 20px;">諦めてタイトルに戻る</button>
+  </div>
+</div>
 
 <!-- ====== Title Screen ====== -->
 <div id="screen-title" class="screen container text-center" style="padding-top:60px;">
@@ -294,14 +316,16 @@ let myStoryIndex = -1;
 let mySubmitted = false;
 let myLastSubmittedText = "";
 let gamePhase = "idle"; // idle, lobby, topic, writing, results
+let guestConnGen = 0;  // generation counter for ignoring stale events
+let reconnectTimer = null;
 
 // ===================== HOST PERSISTENCE =====================
-const LS_KEY = 'watashibunko_host';
+const LS_HOST = 'watashibunko_host';
 
 function saveHostState() {
   if (!isHost) return;
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify({
+    localStorage.setItem(LS_HOST, JSON.stringify({
       roomId, numPages, players, topicsCollected: topicsCollected || [],
       gameState: gameState ? JSON.parse(JSON.stringify(gameState)) : null,
       roundDoneList: [...roundDone], gamePhase,
@@ -310,11 +334,31 @@ function saveHostState() {
 }
 
 function loadHostState() {
-  try { const s = localStorage.getItem(LS_KEY); return s ? JSON.parse(s) : null; } catch(e) { return null; }
+  try { const s = localStorage.getItem(LS_HOST); return s ? JSON.parse(s) : null; } catch(e) { return null; }
 }
 
 function clearHostState() {
-  try { localStorage.removeItem(LS_KEY); } catch(e) {}
+  try { localStorage.removeItem(LS_HOST); } catch(e) {}
+}
+
+// ===================== GUEST PERSISTENCE =====================
+const LS_GUEST = 'watashibunko_guest';
+
+function saveGuestState() {
+  if (isHost) return;
+  try {
+    localStorage.setItem(LS_GUEST, JSON.stringify({
+      roomId, myIndex, playerName: players[myIndex] || '',
+    }));
+  } catch(e) {}
+}
+
+function loadGuestState() {
+  try { const s = localStorage.getItem(LS_GUEST); return s ? JSON.parse(s) : null; } catch(e) { return null; }
+}
+
+function clearGuestState() {
+  try { localStorage.removeItem(LS_GUEST); } catch(e) {}
 }
 
 // ===================== RANDOM TOPIC GENERATOR =====================
@@ -431,8 +475,22 @@ function showScreen(name) {
 
 function backToTitle() {
   if (peer) { peer.destroy(); peer = null; }
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  guestConnGen++;
   connections = []; hostConn = null;
   clearHostState();
+  clearGuestState();
+  document.getElementById('disconnect-overlay').style.display = 'none';
+  showScreen('title');
+}
+
+function dismissDisconnect() {
+  document.getElementById('disconnect-overlay').style.display = 'none';
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  guestConnGen++;
+  if (peer) { peer.destroy(); peer = null; }
+  connections = []; hostConn = null;
+  clearGuestState();
   showScreen('title');
 }
 
@@ -577,38 +635,91 @@ function showJoin() {
   document.getElementById('join-error').textContent = '';
 }
 
-function joinRoom() {
-  const rid = document.getElementById('join-room').value.trim();
-  const name = document.getElementById('join-name').value.trim();
-  if (rid.length !== 5 || !name) return;
-  document.getElementById('join-error').textContent = '';
-  document.getElementById('join-btn').textContent = '接続中...';
-  document.getElementById('join-btn').disabled = true;
+function joinRoom(rejoinInfo) {
+  const rid = rejoinInfo ? rejoinInfo.roomId : document.getElementById('join-room').value.trim();
+  const name = rejoinInfo ? rejoinInfo.playerName : document.getElementById('join-name').value.trim();
+  const isRejoin = !!rejoinInfo;
 
+  if (rid.length !== 5 || !name) return;
+  roomId = rid;
+  isHost = false;
+  guestConnGen++;
+  const myGen = guestConnGen;
+
+  if (!isRejoin) {
+    document.getElementById('join-error').textContent = '';
+    document.getElementById('join-btn').textContent = '接続中...';
+    document.getElementById('join-btn').disabled = true;
+  }
+
+  if (peer && !peer.destroyed) peer.destroy();
   peer = new Peer(undefined, { debug: 0 });
+
   peer.on('open', () => {
+    if (myGen !== guestConnGen) return;
     const conn = peer.connect('watashibunko-' + rid);
     hostConn = conn;
-    conn.on('open', () => { conn.send({ type: 'join', name }); });
-    conn.on('data', handleGuestMessage);
+
+    conn.on('open', () => {
+      if (myGen !== guestConnGen) return;
+      conn.send({ type: 'join', name });
+    });
+
+    conn.on('data', (d) => {
+      if (myGen !== guestConnGen) return;
+      handleGuestMessage(d);
+    });
+
+    conn.on('close', () => {
+      if (myGen !== guestConnGen) return;
+      // Host disconnected — show overlay and auto-retry
+      if (currentScreenName !== 'title' && currentScreenName !== 'join') {
+        document.getElementById('disconnect-overlay').style.display = 'flex';
+        scheduleGuestReconnect(rid, name);
+      }
+    });
+
     conn.on('error', () => {
-      document.getElementById('join-error').textContent = '接続に失敗しました';
-      document.getElementById('join-btn').textContent = '参加する';
-      document.getElementById('join-btn').disabled = false;
+      if (myGen !== guestConnGen) return;
+      if (!isRejoin) {
+        document.getElementById('join-error').textContent = '接続に失敗しました';
+        document.getElementById('join-btn').textContent = '参加する';
+        document.getElementById('join-btn').disabled = false;
+      } else {
+        // Retry
+        scheduleGuestReconnect(rid, name);
+      }
     });
   });
+
   peer.on('error', () => {
-    document.getElementById('join-error').textContent = 'ルームが見つかりません';
-    document.getElementById('join-btn').textContent = '参加する';
-    document.getElementById('join-btn').disabled = false;
-  });
-  setTimeout(() => {
-    if (document.getElementById('join-btn').textContent === '接続中...') {
-      document.getElementById('join-error').textContent = '接続がタイムアウトしました';
+    if (myGen !== guestConnGen) return;
+    if (!isRejoin) {
+      document.getElementById('join-error').textContent = 'ルームが見つかりません';
       document.getElementById('join-btn').textContent = '参加する';
       document.getElementById('join-btn').disabled = false;
+    } else {
+      scheduleGuestReconnect(rid, name);
     }
-  }, 10000);
+  });
+
+  if (!isRejoin) {
+    setTimeout(() => {
+      if (myGen !== guestConnGen) return;
+      if (document.getElementById('join-btn').textContent === '接続中...') {
+        document.getElementById('join-error').textContent = '接続がタイムアウトしました';
+        document.getElementById('join-btn').textContent = '参加する';
+        document.getElementById('join-btn').disabled = false;
+      }
+    }, 10000);
+  }
+}
+
+function scheduleGuestReconnect(rid, name) {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => {
+    joinRoom({ roomId: rid, playerName: name });
+  }, 3000);
 }
 
 // ===================== GUEST MESSAGE HANDLER =====================
@@ -617,7 +728,10 @@ function handleGuestMessage(data) {
     myIndex = data.playerIndex;
     players = data.players;
     renderLobbyPlayers();
+    document.getElementById('disconnect-overlay').style.display = 'none';
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     showScreen('lobby');
+    saveGuestState();
 
   } else if (data.type === 'rejoinState') {
     // Recovering after rejoin
@@ -626,6 +740,9 @@ function handleGuestMessage(data) {
     gameState = data.gameState;
     roundDone = new Set(data.roundDoneList || []);
     const phase = data.gamePhase;
+    document.getElementById('disconnect-overlay').style.display = 'none';
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    saveGuestState();
 
     if (phase === 'lobby') {
       renderLobbyPlayers();
@@ -898,10 +1015,13 @@ function escHtml(s) {
 // ===================== PLAY AGAIN =====================
 function playAgain() {
   if (peer) { peer.destroy(); peer = null; }
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  guestConnGen++;
   connections = []; hostConn = null; players = [];
   gameState = null; topicsCollected = []; roundDone = new Set();
   gamePhase = 'idle';
   clearHostState();
+  clearGuestState();
   showScreen('title');
 }
 
@@ -958,51 +1078,59 @@ function showCopyFeedback(msg) {
   el._timer = setTimeout(() => { el.style.opacity = '0'; }, 2500);
 }
 
-// ===================== HOST AUTO-RESTORE ON LOAD =====================
+// ===================== AUTO-RESTORE ON LOAD =====================
 window.addEventListener('load', () => {
-  const saved = loadHostState();
-  if (!saved || saved.gamePhase === 'idle') return;
+  // Try host restore first
+  const hostSaved = loadHostState();
+  if (hostSaved && hostSaved.gamePhase !== 'idle') {
+    isHost = true;
+    myIndex = 0;
+    roomId = hostSaved.roomId;
+    numPages = hostSaved.numPages;
+    players = hostSaved.players || [];
+    topicsCollected = hostSaved.topicsCollected || [];
+    gameState = hostSaved.gameState;
+    roundDone = new Set(hostSaved.roundDoneList || []);
+    gamePhase = hostSaved.gamePhase;
 
-  isHost = true;
-  myIndex = 0;
-  roomId = saved.roomId;
-  numPages = saved.numPages;
-  players = saved.players || [];
-  topicsCollected = saved.topicsCollected || [];
-  gameState = saved.gameState;
-  roundDone = new Set(saved.roundDoneList || []);
-  gamePhase = saved.gamePhase;
+    initHostPeer(roomId);
 
-  // Reconnect peer with same room ID so guests can rejoin
-  initHostPeer(roomId);
-
-  if (gamePhase === 'lobby') {
-    document.getElementById('host-room-code').textContent = roomId;
-    document.getElementById('host-name').value = players[0] || '';
-    renderPageSelect();
-    renderHostPlayers();
-    showScreen('host');
-    document.getElementById('host-name').addEventListener('input', () => {
-      players[0] = document.getElementById('host-name').value.trim() || 'ホスト';
-      renderHostPlayers(); saveHostState();
-    });
-  } else if (gamePhase === 'topic') {
-    showScreen('topic');
-  } else if (gamePhase === 'writing' && gameState) {
-    isRestoring = true;
-    startWritingRound(gameState.currentRound);
-    // Restore host's own submitted state if applicable
-    if (roundDone.has(0)) {
-      mySubmitted = true;
-      document.getElementById('write-submitted-msg').classList.remove('hidden');
-      document.getElementById('write-submit-btn').textContent = '再提出';
+    if (gamePhase === 'lobby') {
+      document.getElementById('host-room-code').textContent = roomId;
+      document.getElementById('host-name').value = players[0] || '';
+      renderPageSelect();
+      renderHostPlayers();
+      showScreen('host');
+      document.getElementById('host-name').addEventListener('input', () => {
+        players[0] = document.getElementById('host-name').value.trim() || 'ホスト';
+        renderHostPlayers(); saveHostState();
+      });
+    } else if (gamePhase === 'topic') {
+      showScreen('topic');
+    } else if (gamePhase === 'writing' && gameState) {
+      isRestoring = true;
+      startWritingRound(gameState.currentRound);
+      if (roundDone.has(0)) {
+        mySubmitted = true;
+        document.getElementById('write-submitted-msg').classList.remove('hidden');
+        document.getElementById('write-submit-btn').textContent = '再提出';
+      }
+      isRestoring = false;
+    } else if (gamePhase === 'results' && gameState) {
+      showResults();
     }
-    isRestoring = false;
-  } else if (gamePhase === 'results' && gameState) {
-    showResults();
+    return;
+  }
+
+  // Try guest restore
+  const guestSaved = loadGuestState();
+  if (guestSaved && guestSaved.roomId && guestSaved.playerName) {
+    // Auto-reconnect to host
+    document.getElementById('disconnect-overlay').style.display = 'flex';
+    joinRoom({ roomId: guestSaved.roomId, playerName: guestSaved.playerName });
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.20</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.22</div>
 </body>
 </html>
