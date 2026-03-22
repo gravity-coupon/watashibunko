@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>わたし文庫 - みんなで繋ぐ即興リレー小説</title>
+<title>じゃれ本（餅天） - みんなで繋ぐ即興リレー小説</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -157,7 +157,7 @@
 <!-- ====== Title Screen ====== -->
 <div id="screen-title" class="screen container text-center" style="padding-top:60px;">
   <div style="font-size:72px;" class="mb-8">📖</div>
-  <h1 class="gradient-title mb-8" style="font-size:48px;font-weight:900;letter-spacing:4px;">わたし文庫</h1>
+  <h1 class="gradient-title mb-8" style="font-size:48px;font-weight:900;letter-spacing:4px;">じゃれ本（餅天）</h1>
   <p class="text-dim mb-32" style="font-size:16px;line-height:1.8;">みんなで繋ぐ即興リレー小説ゲーム</p>
   <div class="flex-col">
     <button class="btn btn-primary" onclick="showHostSetup()">部屋をつくる</button>
@@ -166,6 +166,12 @@
   <p class="text-dim" style="font-size:13px;margin-top:40px;line-height:1.6;">
     PeerJSを利用したP2P通信で動作します。<br>サーバーは使わず、ブラウザだけで完結します。
   </p>
+  <div style="margin-top:32px;padding-top:20px;border-top:1px solid #2a3a5e;">
+    <p class="text-dim" style="font-size:12px;line-height:1.8;">
+      本アプリは「<a href="https://jarebon.com/" target="_blank" rel="noopener" style="color:#f0c040;text-decoration:none;">じゃれ本</a>」（大山 徹・島田 賢一・浦川 通 作）に<br>インスパイアされた非公式のファンメイドWebアプリです。<br>
+      本家「じゃれ本」は <a href="https://jarebon.com/" target="_blank" rel="noopener" style="color:#f0c040;text-decoration:none;">jarebon.com</a> ／ <a href="https://online.jarebon.com/" target="_blank" rel="noopener" style="color:#f0c040;text-decoration:none;">online.jarebon.com</a> からお楽しみいただけます。
+    </p>
+  </div>
 </div>
 
 <!-- ====== Host Setup Screen ====== -->
@@ -229,10 +235,10 @@
 <!-- ====== Topic Screen ====== -->
 <div id="screen-topic" class="screen container hidden">
   <div class="card">
-    <h2 class="text-center mb-8" style="font-size:24px;">お題を決めよう</h2>
-    <p class="text-dim text-center mb-24" style="font-size:14px;">物語の最初のお題を書いてください</p>
+    <h2 class="text-center mb-8" style="font-size:24px;">タイトルを決めよう</h2>
+    <p class="text-dim text-center mb-24" style="font-size:14px;">物語の最初のタイトルを書いてください</p>
     <div class="mb-16">
-      <input id="topic-input" class="input-field" placeholder="お題を入力..." maxlength="50">
+      <input id="topic-input" class="input-field" placeholder="タイトルを入力..." maxlength="50">
     </div>
     <div class="mb-24">
       <button class="btn btn-ghost btn-full" onclick="randomTopic()" style="padding:10px 16px;font-size:14px;">🎲 ランダム</button>
@@ -807,7 +813,7 @@ function submitTopic() {
     topicsComplete = false;
     handleTopicFromPlayer(0, topic);
     if (!topicsComplete) {
-      showWaiting(topicsCollected.filter(t => t !== undefined).length, players.length);
+      showWaiting(topicsCollected.filter(t => t != null && t !== '').length, players.length);
     }
   } else {
     hostConn.send({ type: 'topicSubmit', topic });
@@ -817,14 +823,15 @@ function submitTopic() {
 
 function handleTopicFromPlayer(pIdx, topic) {
   topicsCollected[pIdx] = topic;
-  const count = topicsCollected.filter(t => t !== undefined).length;
+  const count = topicsCollected.filter(t => t != null && t !== '').length;
   broadcast({ type: 'topicProgress', count: count, total: players.length });
   updateWaiting(count, players.length);
+  saveHostState();
   if (count === players.length) {
     topicsComplete = true;
     const np = players.length;
     const shifts = generateRotation(np, numPages);
-    const stories = topicsCollected.map((t, i) => ({ title: t, parts: [], originalPlayerIndex: i }));
+    const stories = topicsCollected.map((t, i) => ({ title: t || '無題', parts: [], originalPlayerIndex: i }));
     gameState = { stories, currentRound: 0, totalRounds: numPages, shifts, numPlayers: np, players: [...players] };
     gamePhase = 'writing';
     broadcast({ type: 'startWriting', gameState: JSON.parse(JSON.stringify(gameState)) });
@@ -1035,7 +1042,7 @@ function playAgain() {
 // ===================== COPY & SCREENSHOT =====================
 function copyStoryAsText() {
   const story = gameState.stories[currentStoryView];
-  let text = '📖 わたし文庫\n';
+  let text = '📖 じゃれ本（餅天）\n';
   text += '━━━━━━━━━━━━━━━━\n';
   text += '「' + story.title + '」\n';
   text += '━━━━━━━━━━━━━━━━\n\n';
@@ -1068,7 +1075,7 @@ function saveStoryAsImage() {
   }).then(canvas => {
     const link = document.createElement('a');
     const story = gameState.stories[currentStoryView];
-    link.download = 'わたし文庫_' + story.title.slice(0, 10) + '.png';
+    link.download = 'じゃれ本（餅天）_' + story.title.slice(0, 10) + '.png';
     link.href = canvas.toDataURL('image/png');
     link.click();
     showCopyFeedback('画像を保存しました！');
@@ -1095,7 +1102,7 @@ window.addEventListener('load', () => {
     roomId = hostSaved.roomId;
     numPages = hostSaved.numPages;
     players = hostSaved.players || [];
-    topicsCollected = hostSaved.topicsCollected || [];
+    topicsCollected = (hostSaved.topicsCollected || []).map(t => t == null ? undefined : t);
     gameState = hostSaved.gameState;
     roundDone = new Set(hostSaved.roundDoneList || []);
     gamePhase = hostSaved.gamePhase;
@@ -1138,6 +1145,6 @@ window.addEventListener('load', () => {
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.23</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.26</div>
 </body>
 </html>
