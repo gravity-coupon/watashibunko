@@ -842,10 +842,15 @@ function handleGuestMessage(data) {
   } else if (data.type === 'spectatorUpdate') {
     // Live update for spectators
     gameState = data.gameState;
-    if (gameState && currentScreenName === 'results') {
-      const wasViewing = currentStoryView;
-      renderResultsTabs();
-      renderStory(wasViewing);
+    if (gameState) {
+      if (currentScreenName !== 'results') {
+        // First time getting gameState (e.g. was on lobby waiting) — switch to results
+        showResults();
+      } else {
+        const wasViewing = currentStoryView;
+        renderResultsTabs();
+        renderStory(wasViewing);
+      }
       if (data.gamePhase === 'results') {
         document.getElementById('results-subtitle').textContent = gameState.stories.length + ' つの物語が完成しました';
       } else {
@@ -1222,6 +1227,6 @@ window.addEventListener('load', () => {
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.31</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.32</div>
 </body>
 </html>
