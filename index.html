@@ -378,6 +378,25 @@ function clearGuestState() {
   try { localStorage.removeItem(LS_GUEST); } catch(e) {}
 }
 
+// Persists finished game results so reload shows results screen
+const LS_FINISHED = 'watashibunko_finished';
+
+function saveFinishedGame() {
+  try {
+    localStorage.setItem(LS_FINISHED, JSON.stringify({
+      gameState: JSON.parse(JSON.stringify(gameState)),
+    }));
+  } catch(e) {}
+}
+
+function loadFinishedGame() {
+  try { const s = localStorage.getItem(LS_FINISHED); return s ? JSON.parse(s) : null; } catch(e) { return null; }
+}
+
+function clearFinishedGame() {
+  try { localStorage.removeItem(LS_FINISHED); } catch(e) {}
+}
+
 // ===================== RANDOM TOPIC GENERATOR =====================
 const TOPIC_WHO = [
   "猫","おばあちゃん","宇宙人","王様","幽霊","ロボット","忍者","赤ちゃん",
@@ -524,6 +543,7 @@ function backToTitle() {
   isSpectator = false;
   clearHostState();
   clearGuestState();
+  clearFinishedGame();
   document.getElementById('disconnect-overlay').style.display = 'none';
   showScreen('title');
 }
@@ -934,6 +954,7 @@ function handleGuestMessage(data) {
     updateWriteProgress(data.count, gameState.numPlayers);
   } else if (data.type === 'showResults') {
     gameState = data.gameState;
+    saveFinishedGame();
     showResults();
   } else if (data.type === 'gameEnd') {
     // Host ended the game — stop reconnecting, stay on results or go to title
@@ -989,6 +1010,7 @@ function handleGuestMessage(data) {
       if (data.gamePhase === 'results') {
         document.getElementById('results-subtitle').textContent = gameState.stories.length + ' つの物語が完成しました';
         // Game finished — release spectator (same as gameEnd)
+        saveFinishedGame();
         if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
         guestConnGen++;
         isSpectator = false;
@@ -1321,6 +1343,7 @@ function playAgain() {
     gamePhase = 'idle';
     clearHostState();
     clearGuestState();
+    clearFinishedGame();
     showScreen('title');
   }, 100);
 }
@@ -1430,10 +1453,18 @@ window.addEventListener('load', () => {
     spectatorName = guestSaved.playerName;
     document.getElementById('disconnect-overlay').style.display = 'flex';
     joinRoom({ roomId: guestSaved.roomId, playerName: guestSaved.playerName });
+    return;
+  }
+
+  // Try finished game restore (for reload after game ended)
+  const finishedSaved = loadFinishedGame();
+  if (finishedSaved && finishedSaved.gameState) {
+    gameState = finishedSaved.gameState;
+    showResults();
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.53</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.54</div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#f0c040;opacity:0.7;font-family:monospace;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>
 </body>
 </html>
