@@ -743,6 +743,8 @@ function showJoin() {
   showScreen('join');
   document.getElementById('join-error').textContent = '';
   document.getElementById('join-room').value = '';
+  document.getElementById('join-btn').textContent = '参加する';
+  document.getElementById('join-btn').disabled = false;
   // Prefill saved name
   const savedName = (function() { try { return localStorage.getItem('watashibunko_name') || ''; } catch(e) { return ''; } })();
   if (savedName) document.getElementById('join-name').value = savedName;
@@ -1356,7 +1358,7 @@ window.addEventListener('load', () => {
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.43</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.44</div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#f0c040;opacity:0.7;font-family:monospace;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>
 </body>
 </html>
