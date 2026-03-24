@@ -11,7 +11,7 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    font-family: 'Noto Sans JP', sans-serif;
+    font-family: 'Zen Old Mincho', serif;
     color: #eee;
     min-height: 100vh;
     background: linear-gradient(160deg, #1a1a2e 0%, #0f0f23 50%, #1a1033 100%);
@@ -19,13 +19,14 @@
   ::selection { background: rgba(233,69,96,0.27); }
   @keyframes fadeIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
   .screen { animation: fadeIn 0.4s ease; }
-  button { font-family: inherit; }
-  input, textarea { font-family: inherit; }
+  button { font-family: 'Noto Sans JP', sans-serif; }
+  input, textarea { font-family: 'Noto Sans JP', sans-serif; }
+  select { font-family: 'Noto Sans JP', sans-serif; }
   textarea:focus, input:focus { border-color: #e94560 !important; outline: none; }
 
   .btn {
     padding: 14px 32px; border-radius: 12px; font-size: 16px; font-weight: 700;
-    cursor: pointer; transition: all 0.2s ease; letter-spacing: 0.5px; font-family: inherit;
+    cursor: pointer; transition: all 0.2s ease; letter-spacing: 0.5px; font-family: 'Noto Sans JP', sans-serif;
   }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .btn-primary { background: linear-gradient(135deg, #e94560, #c73e54); color: #fff; border: none; box-shadow: 0 4px 15px rgba(233,69,96,0.3); }
@@ -44,14 +45,14 @@
   .input-field {
     width: 100%; padding: 14px 18px; border-radius: 12px;
     border: 2px solid #2a3a5e; background: rgba(0,0,0,0.3);
-    color: #eee; font-size: 16px; font-family: inherit; outline: none;
+    color: #eee; font-size: 16px; font-family: 'Noto Sans JP', sans-serif; outline: none;
     transition: border-color 0.2s; box-sizing: border-box;
   }
   textarea.input-field { resize: vertical; min-height: 160px; }
 
   .badge {
     display: inline-block; padding: 4px 12px; border-radius: 20px;
-    font-size: 13px; font-weight: 700;
+    font-size: 13px; font-weight: 700; font-family: 'Noto Sans JP', sans-serif;
   }
 
   .text-center { text-align: center; }
@@ -81,7 +82,7 @@
 
   .page-select-btn {
     flex: 1; padding: 10px; border-radius: 10px; font-size: 18px;
-    font-weight: 700; cursor: pointer; font-family: inherit;
+    font-weight: 700; cursor: pointer; font-family: 'Noto Sans JP', sans-serif;
     border: 2px solid #2a3a5e; background: transparent; color: #8899aa;
     transition: all 0.15s ease;
   }
@@ -91,7 +92,7 @@
 
   .story-tab {
     padding: 8px 16px; border-radius: 10px; cursor: pointer;
-    font-size: 14px; font-weight: 700; font-family: inherit;
+    font-size: 14px; font-weight: 700; font-family: 'Noto Sans JP', sans-serif;
     border: 2px solid #2a3a5e; background: transparent; color: #8899aa;
   }
   .story-tab.active { border-color: #f0c040; background: rgba(240,192,64,0.13); color: #f0c040; }
@@ -122,7 +123,7 @@
   .badge-green { background: rgba(78,205,196,0.13); color: #4ecdc4; border: 1px solid rgba(78,205,196,0.27); }
   .badge-dim { background: rgba(136,153,170,0.13); color: #8899aa; border: 1px solid rgba(136,153,170,0.27); }
 
-  .char-count { font-size: 13px; text-align: right; margin-bottom: 16px; }
+  .char-count { font-size: 13px; text-align: right; margin-bottom: 16px; font-family: 'Noto Sans JP', sans-serif; }
   .char-warn { color: #e94560; }
   .char-ok { color: #8899aa; }
 
@@ -139,7 +140,7 @@
   .disconnect-box {
     background: linear-gradient(145deg, #16213e, #1c2a4a);
     border-radius: 20px; padding: 32px; max-width: 400px; width: 90%;
-    border: 1px solid #2a3a5e; text-align: center;
+    border: 1px solid #2a3a5e; text-align: center; font-family: 'Noto Sans JP', sans-serif;
   }
 </style>
 </head>
@@ -1701,7 +1702,7 @@ window.addEventListener('load', () => {
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.68</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.69</div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#f0c040;opacity:0.7;font-family:monospace;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>
 </body>
 </html>
