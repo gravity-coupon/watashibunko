@@ -871,7 +871,16 @@ let heartbeatTimeout = null;
 function startHostHeartbeat() {
   stopHeartbeat();
   heartbeatInterval = setInterval(() => {
+    if (!isHost) return;
     broadcast({ type: 'ping' });
+    // Check if any guest connections are dead and try reverse reconnect
+    if (gamePhase !== 'idle' && gamePhase !== 'lobby' && peer && peer.open) {
+      let hasDead = false;
+      connections.forEach(c => {
+        if (!c.open && c._guestPeerId) hasDead = true;
+      });
+      if (hasDead) reconnectToGuests();
+    }
   }, 5000);
 }
 
@@ -897,6 +906,34 @@ function stopHeartbeat() {
   if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
   if (heartbeatTimeout) { clearTimeout(heartbeatTimeout); heartbeatTimeout = null; }
 }
+
+// Detect host returning from background and proactively check connections
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (!isHost || gamePhase === 'idle' || gamePhase === 'lobby') return;
+  // Host just came back to foreground — check peer health
+  console.log('Host returned to foreground, checking connections...');
+  setTimeout(() => {
+    if (!peer || peer.destroyed) {
+      // Peer is dead, recreate
+      console.log('Host peer dead after background, recreating...');
+      initHostPeer(roomId);
+      return;
+    }
+    if (peer.disconnected && !peer.open) {
+      console.log('Host peer disconnected after background, recreating...');
+      initHostPeer(roomId);
+      return;
+    }
+    // Peer looks alive — try to reconnect to dead guest connections
+    // Send a test ping first to flush dead connections
+    try { broadcast({ type: 'ping' }); } catch(e) {}
+    // Wait a moment for close events to fire, then reconnect
+    setTimeout(() => {
+      reconnectToGuests();
+    }, 2000);
+  }, 500);
+});
 function initHostPeer(rid) {
   if (peer && !peer.destroyed) peer.destroy();
   peer = new Peer('watashibunko-' + rid, { debug: 0 });
@@ -2151,7 +2188,7 @@ window.addEventListener('load', () => {
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.88</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.89</div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#f0c040;opacity:0.7;font-family:monospace;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>
 </body>
 </html>
