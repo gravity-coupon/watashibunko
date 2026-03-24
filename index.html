@@ -354,6 +354,7 @@ let myLastSubmittedText = "";
 let gamePhase = "idle"; // idle, lobby, topic, writing, results
 let guestConnGen = 0;  // generation counter for ignoring stale events
 let reconnectTimer = null;
+let playerTokens = []; // host: token per player for identity verification
 
 // ===================== HOST PERSISTENCE =====================
 const LS_HOST = 'watashibunko_host';
@@ -364,7 +365,7 @@ function saveHostState() {
     localStorage.setItem(LS_HOST, JSON.stringify({
       roomId, numPages, players, topicsCollected: topicsCollected || [],
       gameState: gameState ? JSON.parse(JSON.stringify(gameState)) : null,
-      roundDoneList: [...roundDone], gamePhase,
+      roundDoneList: [...roundDone], gamePhase, playerTokens,
     }));
   } catch(e) {}
 }
@@ -592,6 +593,13 @@ function generateRoomId() {
   return r;
 }
 
+function generateToken() {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let r = "";
+  for (let i = 0; i < 16; i++) r += chars[Math.floor(Math.random() * chars.length)];
+  return r;
+}
+
 function generateRotation(np, pages) {
   if (np === 1) return new Array(pages).fill(0);
   if (np === 2) {
@@ -651,18 +659,19 @@ function backToTitle() {
   guestConnGen++;
   connections = []; hostConn = null;
   isSpectator = false;
+  playerTokens = [];
   clearHostState();
   clearGuestState();
   clearFinishedGame();
+  try { sessionStorage.removeItem('watashibunko_token'); } catch(e) {}
   hideDisconnectOverlay();
   showScreen('title');
 }
 
 function leaveLobby() {
-  // Increment generation first so conn.on('close') is ignored
   guestConnGen++;
   clearGuestState();
-  // Notify host
+  try { sessionStorage.removeItem('watashibunko_token'); } catch(e) {}
   if (hostConn && hostConn.open) {
     try { hostConn.send({ type: 'leave', playerIndex: myIndex }); } catch(e) {}
   }
@@ -807,15 +816,18 @@ function renderLobbyPlayers() {
 // ===================== HOST MESSAGE HANDLER =====================
 function handleHostMessage(conn, data) {
   if (data.type === 'join') {
-    // Check if this is a rejoin (same name as existing player)
+    // Check if this is a rejoin (same name as existing player) during game
     const existingIdx = players.indexOf(data.name);
     if (existingIdx >= 1 && gamePhase !== 'lobby') {
-      // Rejoin: replace connection for this player
+      // Verify token for game-phase rejoin
+      if (playerTokens[existingIdx] && data.token !== playerTokens[existingIdx]) {
+        conn.send({ type: 'joinError', message: 'その名前は既に使われています。別の名前でお試しください。' });
+        return;
+      }
       conn._playerIndex = existingIdx;
       conn._playerName = data.name;
       connections = connections.filter(c => c._playerIndex !== existingIdx);
       connections.push(conn);
-      // Send full state for recovery
       conn.send({
         type: 'rejoinState',
         playerIndex: existingIdx,
@@ -844,28 +856,31 @@ function handleHostMessage(conn, data) {
     }
 
     // Normal new join (lobby phase)
-    // Check for duplicate name in lobby (e.g. guest reloaded or same name)
     const lobbyDup = players.indexOf(data.name);
     if (lobbyDup >= 0) {
-      if (lobbyDup >= 1) {
-        // Existing guest with same name — treat as reconnection (e.g. reload)
+      if (lobbyDup >= 1 && data.token && data.token === playerTokens[lobbyDup]) {
+        // Same person reconnecting (e.g. reload) — token matches
         conn._playerIndex = lobbyDup;
         conn._playerName = data.name;
         connections = connections.filter(c => c._playerIndex !== lobbyDup);
         connections.push(conn);
-        conn.send({ type: 'joined', playerIndex: lobbyDup, players: [...players] });
+        conn.send({ type: 'joined', playerIndex: lobbyDup, players: [...players], token: playerTokens[lobbyDup] });
       } else {
-        // Same name as host — reject
+        // Different person with same name, or host name conflict — reject
         conn.send({ type: 'joinError', message: 'その名前は既に使われています。別の名前でお試しください。' });
       }
       return;
     }
+    // Brand new player
+    const token = generateToken();
     players.push(data.name);
-    conn._playerIndex = players.length - 1;
+    const newIdx = players.length - 1;
+    playerTokens[newIdx] = token;
+    conn._playerIndex = newIdx;
     conn._playerName = data.name;
-    connections = connections.filter(c => c._playerIndex !== conn._playerIndex);
+    connections = connections.filter(c => c._playerIndex !== newIdx);
     connections.push(conn);
-    conn.send({ type: 'joined', playerIndex: conn._playerIndex, players: [...players] });
+    conn.send({ type: 'joined', playerIndex: newIdx, players: [...players], token });
     broadcast({ type: 'playerList', players: [...players] }, conn);
     renderHostPlayers();
     saveHostState();
@@ -953,7 +968,8 @@ function joinRoom(rejoinInfo) {
     conn.on('open', () => {
       if (myGen !== guestConnGen) return;
       connected = true;
-      conn.send({ type: 'join', name });
+      const token = (function() { try { return sessionStorage.getItem('watashibunko_token') || ''; } catch(e) { return ''; } })();
+      conn.send({ type: 'join', name, token });
     });
 
     conn.on('data', (d) => {
@@ -1041,6 +1057,7 @@ function handleGuestMessage(data) {
   if (data.type === 'joined') {
     myIndex = data.playerIndex;
     players = data.players;
+    if (data.token) { try { sessionStorage.setItem('watashibunko_token', data.token); } catch(e) {} }
     document.getElementById('lobby-title').textContent = '参加しました！';
     document.getElementById('lobby-subtitle').textContent = 'ホストがゲームを開始するのを待っています...';
     renderLobbyPlayers();
@@ -1490,10 +1507,12 @@ function playAgain() {
     guestConnGen++;
     connections = []; spectators = []; hostConn = null; players = [];
     gameState = null; topicsCollected = []; roundDone = new Set();
+    playerTokens = [];
     gamePhase = 'idle';
     clearHostState();
     clearGuestState();
     clearFinishedGame();
+    try { sessionStorage.removeItem('watashibunko_token'); } catch(e) {}
     showScreen('title');
   }, 100);
 }
@@ -1591,6 +1610,7 @@ window.addEventListener('load', () => {
     topicsCollected = (hostSaved.topicsCollected || []).map(t => t == null ? undefined : t);
     gameState = hostSaved.gameState;
     roundDone = new Set(hostSaved.roundDoneList || []);
+    playerTokens = hostSaved.playerTokens || [];
     gamePhase = hostSaved.gamePhase;
 
     initHostPeer(roomId);
@@ -1641,7 +1661,7 @@ window.addEventListener('load', () => {
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.62</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.63</div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#f0c040;opacity:0.7;font-family:monospace;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>
 </body>
 </html>
