@@ -874,12 +874,26 @@ function initHostPeer(rid) {
     });
   });
   peer.on('disconnected', () => {
-    setTimeout(() => { if (peer && !peer.destroyed) peer.reconnect(); }, 2000);
+    if (!peer || peer.destroyed) return;
+    // Try reconnect, with timeout fallback to full recreation
+    try { peer.reconnect(); } catch(e) {}
+    setTimeout(() => {
+      if (peer && !peer.destroyed && peer.disconnected) {
+        // reconnect() didn't work — recreate peer entirely
+        console.log('Host peer reconnect failed, recreating...');
+        initHostPeer(rid);
+      }
+    }, 5000);
   });
   peer.on('error', (e) => {
     console.error('Host peer error:', e.type);
     if (e.type === 'unavailable-id') {
       setTimeout(() => initHostPeer(rid), 3000);
+    } else if (e.type === 'network' || e.type === 'server-error' || e.type === 'socket-error') {
+      // Network-level failure — try full recreation after delay
+      setTimeout(() => {
+        if (peer && peer.disconnected) initHostPeer(rid);
+      }, 5000);
     }
   });
 }
@@ -1967,7 +1981,7 @@ window.addEventListener('load', () => {
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.82</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.83</div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#f0c040;opacity:0.7;font-family:monospace;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>
 </body>
 </html>
