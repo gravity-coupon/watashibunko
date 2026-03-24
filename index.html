@@ -1233,85 +1233,54 @@ function joinRoom(rejoinInfo) {
     document.getElementById('join-btn').disabled = true;
   }
 
-  if (peer && !peer.destroyed) peer.destroy();
-  peer = new Peer(undefined, { debug: 0 });
+  if (peer && !peer.destroyed && peer.open) {
+    // Reuse existing peer — just create a new connection
+    setupGuestConnection(peer, rid, name, myGen, isRejoin, retryCount, MAX_RETRIES);
+  } else {
+    if (peer && !peer.destroyed) peer.destroy();
+    peer = new Peer(undefined, { debug: 0 });
 
-  let connected = false;
-
-  // Accept reverse connections from host (host actively reconnects to us)
-  peer.on('connection', (reverseConn) => {
-    const myGen2 = guestConnGen;
-    reverseConn.on('open', () => {
-      reverseConn.on('data', (d) => {
-        if (myGen2 !== guestConnGen) return;
-        if (d.type === 'rejoinState' && d.isReverseConnection) {
-          console.log('Host reverse-connected to us, accepting...');
-          // Use this reverse connection as our host connection
-          hostConn = reverseConn;
-          connected = true;
-          // Process the rejoinState
-          handleGuestMessage(d);
-          // Set up ongoing data handler
-          reverseConn.on('data', (msg) => {
-            if (myGen2 !== guestConnGen) return;
-            handleGuestMessage(msg);
-          });
-        } else {
-          // Forward any other message types
-          handleGuestMessage(d);
-        }
-      });
-      reverseConn.on('close', () => {
-        if (myGen2 !== guestConnGen) return;
-        const shouldReconnect = currentScreenName !== 'title' && currentScreenName !== 'join'
-          && (currentScreenName !== 'results' || isSpectator);
-        if (shouldReconnect) {
-          showDisconnectOverlay();
-          scheduleGuestReconnect(roomId, name);
-        }
+    // Accept reverse connections from host (host actively reconnects to us)
+    peer.on('connection', (reverseConn) => {
+      const myGen2 = guestConnGen;
+      reverseConn.on('open', () => {
+        reverseConn.on('data', (d) => {
+          if (myGen2 !== guestConnGen) return;
+          if (d.type === 'rejoinState' && d.isReverseConnection) {
+            console.log('Host reverse-connected to us, accepting...');
+            hostConn = reverseConn;
+            handleGuestMessage(d);
+          } else {
+            handleGuestMessage(d);
+          }
+        });
+        reverseConn.on('close', () => {
+          if (myGen2 !== guestConnGen) return;
+          const shouldReconnect = currentScreenName !== 'title' && currentScreenName !== 'join'
+            && (currentScreenName !== 'results' || isSpectator);
+          if (shouldReconnect) {
+            showDisconnectOverlay();
+            scheduleGuestReconnect(roomId, name);
+          }
+        });
       });
     });
-  });
 
-  peer.on('open', () => {
-    if (myGen !== guestConnGen) return;
-    const conn = peer.connect('watashibunko-' + rid);
-    hostConn = conn;
-
-    conn.on('open', () => {
+    peer.on('open', () => {
       if (myGen !== guestConnGen) return;
-      connected = true;
-      const token = (function() { try { return sessionStorage.getItem('watashibunko_token') || ''; } catch(e) { return ''; } })();
-      conn.send({ type: 'join', name, token, guestPeerId: peer.id });
+      setupGuestConnection(peer, rid, name, myGen, isRejoin, retryCount, MAX_RETRIES);
     });
 
-    conn.on('data', (d) => {
-      if (myGen !== guestConnGen) return;
-      handleGuestMessage(d);
-    });
-
-    conn.on('close', () => {
-      if (myGen !== guestConnGen) return;
-      // Host disconnected — auto-retry (but not on title/join, and not on results unless spectator)
-      const shouldReconnect = currentScreenName !== 'title' && currentScreenName !== 'join'
-        && (currentScreenName !== 'results' || isSpectator);
-      if (shouldReconnect) {
-        showDisconnectOverlay();
-        scheduleGuestReconnect(rid, name);
-      }
-    });
-
-    conn.on('error', () => {
+    peer.on('error', () => {
       if (myGen !== guestConnGen) return;
       if (!isRejoin) {
-        // Auto-retry if attempts remain
         if (retryCount < MAX_RETRIES) {
           setTimeout(() => {
             if (myGen !== guestConnGen) return;
             joinRoom({ roomId: rid, playerName: name, _retry: retryCount + 1, _isFirstJoin: true, _isRetry: true });
           }, 2000);
         } else {
-          document.getElementById('join-error').textContent = '接続に失敗しました。ルームコードを確認するか、しばらくしてからお試しください。';
+          document.getElementById('join-error').textContent = 'ルームが見つかりません。コードが正しいか、ホストが部屋を開いているか確認してください。';
           document.getElementById('join-btn').textContent = '参加する';
           document.getElementById('join-btn').disabled = false;
         }
@@ -1319,25 +1288,7 @@ function joinRoom(rejoinInfo) {
         scheduleGuestReconnect(rid, name);
       }
     });
-  });
-
-  peer.on('error', () => {
-    if (myGen !== guestConnGen) return;
-    if (!isRejoin) {
-      if (retryCount < MAX_RETRIES) {
-        setTimeout(() => {
-          if (myGen !== guestConnGen) return;
-          joinRoom({ roomId: rid, playerName: name, _retry: retryCount + 1, _isFirstJoin: true, _isRetry: true });
-        }, 2000);
-      } else {
-        document.getElementById('join-error').textContent = 'ルームが見つかりません。コードが正しいか、ホストが部屋を開いているか確認してください。';
-        document.getElementById('join-btn').textContent = '参加する';
-        document.getElementById('join-btn').disabled = false;
-      }
-    } else {
-      scheduleGuestReconnect(rid, name);
-    }
-  });
+  }
 
   if (!isRejoin || rejoinInfo._isFirstJoin) {
     setTimeout(() => {
@@ -1356,6 +1307,52 @@ function joinRoom(rejoinInfo) {
       }
     }, 10000);
   }
+}
+
+function setupGuestConnection(guestPeer, rid, name, myGen, isRejoin, retryCount, MAX_RETRIES) {
+  const conn = guestPeer.connect('watashibunko-' + rid);
+  hostConn = conn;
+  let connected = false;
+
+  conn.on('open', () => {
+    if (myGen !== guestConnGen) return;
+    connected = true;
+    const token = (function() { try { return sessionStorage.getItem('watashibunko_token') || ''; } catch(e) { return ''; } })();
+    conn.send({ type: 'join', name, token, guestPeerId: guestPeer.id });
+  });
+
+  conn.on('data', (d) => {
+    if (myGen !== guestConnGen) return;
+    handleGuestMessage(d);
+  });
+
+  conn.on('close', () => {
+    if (myGen !== guestConnGen) return;
+    const shouldReconnect = currentScreenName !== 'title' && currentScreenName !== 'join'
+      && (currentScreenName !== 'results' || isSpectator);
+    if (shouldReconnect) {
+      showDisconnectOverlay();
+      scheduleGuestReconnect(rid, name);
+    }
+  });
+
+  conn.on('error', () => {
+    if (myGen !== guestConnGen) return;
+    if (!isRejoin) {
+      if (retryCount < MAX_RETRIES) {
+        setTimeout(() => {
+          if (myGen !== guestConnGen) return;
+          joinRoom({ roomId: rid, playerName: name, _retry: retryCount + 1, _isFirstJoin: true, _isRetry: true });
+        }, 2000);
+      } else {
+        document.getElementById('join-error').textContent = '接続に失敗しました。ルームコードを確認するか、しばらくしてからお試しください。';
+        document.getElementById('join-btn').textContent = '参加する';
+        document.getElementById('join-btn').disabled = false;
+      }
+    } else {
+      scheduleGuestReconnect(rid, name);
+    }
+  });
 }
 
 let guestReconnectAttempt = 0;
@@ -2188,7 +2185,7 @@ window.addEventListener('load', () => {
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.89</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.90</div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#f0c040;opacity:0.7;font-family:monospace;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>
 </body>
 </html>
