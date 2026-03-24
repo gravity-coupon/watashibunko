@@ -1434,6 +1434,7 @@ function updateWaiting(done, total) {
   document.getElementById('wait-done').textContent = done;
   document.getElementById('wait-total').textContent = total;
   document.getElementById('wait-progress').style.width = (done / total * 100) + '%';
+  if (isHost) renderHostTopicStatus();
 }
 
 function updateWriteProgress(done, total) {
@@ -1739,7 +1740,7 @@ window.addEventListener('load', () => {
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.73</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.74</div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#f0c040;opacity:0.7;font-family:monospace;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>
 </body>
 </html>
