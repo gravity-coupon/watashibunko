@@ -876,9 +876,10 @@ function startHostHeartbeat() {
     broadcast({ type: 'ping' });
     // Check if any guest connections are dead and try reverse reconnect
     if (gamePhase !== 'idle' && gamePhase !== 'lobby' && peer && peer.open) {
+      const now = Date.now();
       let hasDead = false;
       connections.forEach(c => {
-        if (!c.open && c._guestPeerId) hasDead = true;
+        if (c._guestPeerId && (now - (c._lastActivity || 0)) > 15000) hasDead = true;
       });
       if (hasDead) reconnectToGuests();
     }
@@ -926,10 +927,10 @@ document.addEventListener('visibilitychange', () => {
       initHostPeer(roomId);
       return;
     }
+    const now = Date.now();
     dbg('HOST vischeck: peer=' + (peer ? (peer.destroyed ? 'destroyed' : (peer.disconnected ? 'disconnected' : (peer.open ? 'open' : 'other'))) : 'null') + ' conns=' + connections.length);
-    // Peer looks alive — try to reconnect to dead guest connections
-    const deadConns = connections.filter(c => !c.open);
-    const aliveConns = connections.filter(c => c.open);
+    const deadConns = connections.filter(c => (now - (c._lastActivity || 0)) > 15000);
+    const aliveConns = connections.filter(c => (now - (c._lastActivity || 0)) <= 15000);
     dbg('HOST alive=' + aliveConns.length + ' dead=' + deadConns.length + ' withPeerId=' + connections.filter(c => c._guestPeerId).length);
     // Send a test ping first to flush dead connections
     try { broadcast({ type: 'ping' }); } catch(e) {}
@@ -951,6 +952,7 @@ function initHostPeer(rid) {
   });
   peer.on('connection', (conn) => {
     conn.on('open', () => {
+      conn._lastActivity = Date.now();
       conn.on('data', (data) => handleHostMessage(conn, data));
       conn.on('close', () => { dbg('HOST conn.close: ' + conn._playerName); });
     });
@@ -982,14 +984,22 @@ function reconnectToGuests() {
     dbg('HOST reconnectToGuests: skip (host=' + isHost + ' peer=' + (peer ? (peer.open ? 'open' : 'not-open') : 'null') + ')');
     return;
   }
+  const now = Date.now();
+  const DEAD_THRESHOLD = 15000; // 15 seconds without activity = dead
   let tried = 0;
   connections.forEach(oldConn => {
     const guestPeerId = oldConn._guestPeerId;
     const pIdx = oldConn._playerIndex;
     const pName = oldConn._playerName;
-    if (!guestPeerId || oldConn.open) return;
+    if (!guestPeerId) return;
+    const lastAct = oldConn._lastActivity || 0;
+    const age = now - lastAct;
+    if (age < DEAD_THRESHOLD) {
+      dbg('HOST skip ' + pName + ' (active ' + Math.round(age/1000) + 's ago)');
+      return; // still alive
+    }
     tried++;
-    dbg('HOST reconnectToGuest: ' + pName + ' pid=' + guestPeerId);
+    dbg('HOST reconnectToGuest: ' + pName + ' pid=' + guestPeerId + ' lastAct=' + Math.round(age/1000) + 's ago');
     try {
       const newConn = peer.connect(guestPeerId);
       newConn._playerIndex = pIdx;
@@ -1090,6 +1100,8 @@ function renderLobbyPlayers() {
 
 // ===================== HOST MESSAGE HANDLER =====================
 function handleHostMessage(conn, data) {
+  conn._lastActivity = Date.now();
+  if (data.type === 'pong') return; // heartbeat response, just update activity
   if (data.type === 'join') {
     // Check if this is a rejoin (same name as existing player) during game
     const existingIdx = players.indexOf(data.name);
@@ -1572,7 +1584,8 @@ function handleGuestMessage(data) {
       }
     }
   } else if (data.type === 'ping') {
-    // Heartbeat from host — reset timeout
+    // Heartbeat from host — reset timeout and send pong
+    if (hostConn && hostConn.open) { try { hostConn.send({ type: 'pong' }); } catch(e) {} }
     if (roomId) resetHeartbeatTimeout(roomId, players[myIndex] || spectatorName);
   }
 }
