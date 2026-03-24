@@ -844,15 +844,20 @@ function handleHostMessage(conn, data) {
     }
 
     // Normal new join (lobby phase)
-    // Check for duplicate name in lobby (e.g. guest reloaded)
+    // Check for duplicate name in lobby (e.g. guest reloaded or same name)
     const lobbyDup = players.indexOf(data.name);
-    if (lobbyDup >= 1) {
-      // Same name already in lobby — replace the old connection
-      conn._playerIndex = lobbyDup;
-      conn._playerName = data.name;
-      connections = connections.filter(c => c._playerIndex !== lobbyDup);
-      connections.push(conn);
-      conn.send({ type: 'joined', playerIndex: lobbyDup, players: [...players] });
+    if (lobbyDup >= 0) {
+      if (lobbyDup >= 1) {
+        // Existing guest with same name — treat as reconnection (e.g. reload)
+        conn._playerIndex = lobbyDup;
+        conn._playerName = data.name;
+        connections = connections.filter(c => c._playerIndex !== lobbyDup);
+        connections.push(conn);
+        conn.send({ type: 'joined', playerIndex: lobbyDup, players: [...players] });
+      } else {
+        // Same name as host — reject
+        conn.send({ type: 'joinError', message: 'その名前は既に使われています。別の名前でお試しください。' });
+      }
       return;
     }
     players.push(data.name);
@@ -1043,6 +1048,13 @@ function handleGuestMessage(data) {
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     showScreen('lobby');
     saveGuestState();
+
+  } else if (data.type === 'joinError') {
+    // Name conflict — show error on join screen
+    document.getElementById('join-error').textContent = data.message;
+    document.getElementById('join-btn').textContent = '参加する';
+    document.getElementById('join-btn').disabled = false;
+    showScreen('join');
 
   } else if (data.type === 'rejoinState') {
     // Recovering after rejoin
@@ -1629,7 +1641,7 @@ window.addEventListener('load', () => {
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.61</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.62</div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#f0c040;opacity:0.7;font-family:monospace;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>
 </body>
 </html>
