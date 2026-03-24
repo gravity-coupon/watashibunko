@@ -806,6 +806,7 @@ function backToTitle() {
   clearFinishedGame();
   try { sessionStorage.removeItem('watashibunko_token'); sessionStorage.removeItem('watashibunko_topic'); } catch(e) {}
   clearDraft();
+  stopHeartbeat();
   hideDisconnectOverlay();
   showScreen('title');
 }
@@ -856,13 +857,46 @@ function dismissDisconnect() {
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
   guestConnGen++;
   isSpectator = false;
+  stopHeartbeat();
   if (peer) { peer.destroy(); peer = null; }
   connections = []; hostConn = null;
   clearGuestState();
   showScreen('title');
 }
 
-// ===================== HOST PEER SETUP =====================
+// ===================== HEARTBEAT =====================
+let heartbeatInterval = null;
+let heartbeatTimeout = null;
+
+function startHostHeartbeat() {
+  stopHeartbeat();
+  heartbeatInterval = setInterval(() => {
+    broadcast({ type: 'ping' });
+  }, 5000);
+}
+
+function startGuestHeartbeat(rid, name) {
+  stopHeartbeat();
+  resetHeartbeatTimeout(rid, name);
+}
+
+function resetHeartbeatTimeout(rid, name) {
+  if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
+  heartbeatTimeout = setTimeout(() => {
+    // No ping from host for 15 seconds — connection is likely dead
+    if (currentScreenName !== 'title' && currentScreenName !== 'join' && currentScreenName !== 'results') {
+      console.log('Heartbeat timeout — reconnecting...');
+      showDisconnectOverlay();
+      if (hostConn) { try { hostConn.close(); } catch(e) {} }
+      scheduleGuestReconnect(rid, name);
+    }
+  }, 15000);
+}
+
+function stopHeartbeat() {
+  if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+  if (heartbeatTimeout) { clearTimeout(heartbeatTimeout); heartbeatTimeout = null; }
+}
 function initHostPeer(rid) {
   if (peer && !peer.destroyed) peer.destroy();
   peer = new Peer('watashibunko-' + rid, { debug: 0 });
@@ -1250,6 +1284,7 @@ function handleGuestMessage(data) {
       renderLobbyPlayers();
       showScreen('lobby');
     } else if (phase === 'topic') {
+      if (roomId) startGuestHeartbeat(roomId, players[myIndex] || '');
       // Check if we submitted a topic locally but host didn't receive it
       if (!data.topicAlreadySubmitted) {
         const savedTopic = (function() { try { return sessionStorage.getItem('watashibunko_topic') || ''; } catch(e) { return ''; } })();
@@ -1264,6 +1299,7 @@ function handleGuestMessage(data) {
         showWaiting(0, players.length);
       }
     } else if (phase === 'writing' && gameState) {
+      if (roomId) startGuestHeartbeat(roomId, players[myIndex] || '');
       isRestoring = true;
       startWritingRound(gameState.currentRound);
       isRestoring = false;
@@ -1293,11 +1329,13 @@ function handleGuestMessage(data) {
   } else if (data.type === 'startTopicPhase') {
     document.getElementById('topic-input').value = '';
     try { sessionStorage.removeItem('watashibunko_topic'); } catch(e) {}
+    if (roomId) startGuestHeartbeat(roomId, players[myIndex] || '');
     showScreen('topic');
   } else if (data.type === 'topicProgress') {
     updateWaiting(data.count, data.total);
   } else if (data.type === 'startWriting') {
     gameState = data.gameState;
+    if (roomId) startGuestHeartbeat(roomId, players[myIndex] || '');
     startWritingRound(gameState.currentRound);
   } else if (data.type === 'nextRound') {
     Object.assign(gameState, data.gameState);
@@ -1382,6 +1420,9 @@ function handleGuestMessage(data) {
         document.getElementById('results-subtitle').textContent = '👀 観戦中 — 物語が進行中です（ラウンド ' + (gameState.currentRound + 1) + '/' + gameState.totalRounds + '）';
       }
     }
+  } else if (data.type === 'ping') {
+    // Heartbeat from host — reset timeout
+    if (roomId) resetHeartbeatTimeout(roomId, players[myIndex] || spectatorName);
   }
 }
 
@@ -1392,6 +1433,7 @@ function startGame() {
   document.getElementById('topic-input').value = '';
   showScreen('topic');
   broadcast({ type: 'startTopicPhase' });
+  startHostHeartbeat();
   saveHostState();
 }
 
@@ -1818,6 +1860,7 @@ function abortGameToTitle() {
     clearFinishedGame();
     try { sessionStorage.removeItem('watashibunko_token'); sessionStorage.removeItem('watashibunko_topic'); } catch(e) {}
     clearDraft();
+    stopHeartbeat();
     showScreen('title');
   }, 100);
 }
@@ -1848,6 +1891,7 @@ function playAgain() {
     clearFinishedGame();
     try { sessionStorage.removeItem('watashibunko_token'); sessionStorage.removeItem('watashibunko_topic'); } catch(e) {}
     clearDraft();
+    stopHeartbeat();
     showScreen('title');
   }, 100);
 }
@@ -1996,7 +2040,7 @@ window.addEventListener('load', () => {
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.84</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.85</div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#f0c040;opacity:0.7;font-family:monospace;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>
 </body>
 </html>
