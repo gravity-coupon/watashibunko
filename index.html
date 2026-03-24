@@ -1056,12 +1056,12 @@ function joinRoom(rejoinInfo) {
             joinRoom({ roomId: rid, playerName: name, _retry: retryCount + 1, _isFirstJoin: true });
           }, 1000);
         } else {
-          document.getElementById('join-error').textContent = '接続がタイムアウトしました。ネットワーク環境を確認してもう一度お試しください。';
+          document.getElementById('join-error').textContent = 'ルームに接続できませんでした。ルームが既に閉じられているか、ネットワークに問題がある可能性があります。';
           document.getElementById('join-btn').textContent = '参加する';
           document.getElementById('join-btn').disabled = false;
         }
       }
-    }, 20000);
+    }, 10000);
   }
 }
 
@@ -1702,7 +1702,7 @@ window.addEventListener('load', () => {
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.70</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.71</div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#f0c040;opacity:0.7;font-family:monospace;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>
 </body>
 </html>
