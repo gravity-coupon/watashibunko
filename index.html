@@ -900,7 +900,13 @@ function stopHeartbeat() {
 function initHostPeer(rid) {
   if (peer && !peer.destroyed) peer.destroy();
   peer = new Peer('watashibunko-' + rid, { debug: 0 });
-  peer.on('open', () => { console.log('Host peer open:', rid); });
+  peer.on('open', () => {
+    console.log('Host peer open:', rid);
+    // After reconnect, actively reach out to guests with dead connections
+    if (gamePhase !== 'idle' && gamePhase !== 'lobby') {
+      setTimeout(() => reconnectToGuests(), 1000);
+    }
+  });
   peer.on('connection', (conn) => {
     conn.on('open', () => {
       conn.on('data', (data) => handleHostMessage(conn, data));
@@ -911,7 +917,6 @@ function initHostPeer(rid) {
     if (!peer || peer.destroyed) return;
     try { peer.reconnect(); } catch(e) {}
     setTimeout(() => {
-      // Only recreate if still disconnected (not if reconnect succeeded)
       if (peer && !peer.destroyed && peer.disconnected && !peer.open) {
         console.log('Host peer reconnect failed, recreating...');
         initHostPeer(rid);
@@ -923,11 +928,49 @@ function initHostPeer(rid) {
     if (e.type === 'unavailable-id') {
       setTimeout(() => initHostPeer(rid), 3000);
     } else if (e.type === 'network' || e.type === 'server-error' || e.type === 'socket-error') {
-      // Network-level failure — try full recreation after delay
       setTimeout(() => {
         if (peer && peer.disconnected) initHostPeer(rid);
       }, 5000);
     }
+  });
+}
+
+function reconnectToGuests() {
+  if (!isHost || !peer || peer.destroyed || !peer.open) return;
+  connections.forEach(oldConn => {
+    const guestPeerId = oldConn._guestPeerId;
+    const pIdx = oldConn._playerIndex;
+    const pName = oldConn._playerName;
+    if (!guestPeerId || oldConn.open) return; // skip alive connections or those without peer ID
+    console.log('Host reconnecting to guest:', pName, guestPeerId);
+    try {
+      const newConn = peer.connect(guestPeerId);
+      newConn._playerIndex = pIdx;
+      newConn._playerName = pName;
+      newConn._guestPeerId = guestPeerId;
+      newConn.on('open', () => {
+        // Replace old connection
+        connections = connections.filter(c => c._playerIndex !== pIdx);
+        connections.push(newConn);
+        newConn.on('data', (data) => handleHostMessage(newConn, data));
+        newConn.on('close', () => { console.log('Guest disconnected (reverse):', pName); });
+        // Send rejoinState so guest can recover
+        newConn.send({
+          type: 'rejoinState',
+          playerIndex: pIdx,
+          players: [...players],
+          gamePhase,
+          gameState: gameState ? JSON.parse(JSON.stringify(gameState)) : null,
+          roundDoneList: [...roundDone],
+          playerAlreadySubmitted: roundDone.has(pIdx),
+          topicAlreadySubmitted: topicsCollected[pIdx] != null && topicsCollected[pIdx] !== '',
+          isReverseConnection: true,
+        });
+      });
+      newConn.on('error', () => {
+        console.log('Host reverse connect failed for:', pName);
+      });
+    } catch(e) {}
   });
 }
 
@@ -1015,6 +1058,7 @@ function handleHostMessage(conn, data) {
       }
       conn._playerIndex = existingIdx;
       conn._playerName = data.name;
+      conn._guestPeerId = data.guestPeerId || null;
       connections = connections.filter(c => c._playerIndex !== existingIdx);
       connections.push(conn);
       conn.send({
@@ -1057,6 +1101,7 @@ function handleHostMessage(conn, data) {
         // Same person reconnecting (e.g. reload) — token matches
         conn._playerIndex = lobbyDup;
         conn._playerName = data.name;
+        conn._guestPeerId = data.guestPeerId || null;
         connections = connections.filter(c => c._playerIndex !== lobbyDup);
         connections.push(conn);
         conn.send({ type: 'joined', playerIndex: lobbyDup, players: [...players], token: playerTokens[lobbyDup] });
@@ -1073,6 +1118,7 @@ function handleHostMessage(conn, data) {
     playerTokens[newIdx] = token;
     conn._playerIndex = newIdx;
     conn._playerName = data.name;
+    conn._guestPeerId = data.guestPeerId || null;
     connections = connections.filter(c => c._playerIndex !== newIdx);
     connections.push(conn);
     conn.send({ type: 'joined', playerIndex: newIdx, players: [...players], token });
@@ -1155,6 +1201,41 @@ function joinRoom(rejoinInfo) {
 
   let connected = false;
 
+  // Accept reverse connections from host (host actively reconnects to us)
+  peer.on('connection', (reverseConn) => {
+    const myGen2 = guestConnGen;
+    reverseConn.on('open', () => {
+      reverseConn.on('data', (d) => {
+        if (myGen2 !== guestConnGen) return;
+        if (d.type === 'rejoinState' && d.isReverseConnection) {
+          console.log('Host reverse-connected to us, accepting...');
+          // Use this reverse connection as our host connection
+          hostConn = reverseConn;
+          connected = true;
+          // Process the rejoinState
+          handleGuestMessage(d);
+          // Set up ongoing data handler
+          reverseConn.on('data', (msg) => {
+            if (myGen2 !== guestConnGen) return;
+            handleGuestMessage(msg);
+          });
+        } else {
+          // Forward any other message types
+          handleGuestMessage(d);
+        }
+      });
+      reverseConn.on('close', () => {
+        if (myGen2 !== guestConnGen) return;
+        const shouldReconnect = currentScreenName !== 'title' && currentScreenName !== 'join'
+          && (currentScreenName !== 'results' || isSpectator);
+        if (shouldReconnect) {
+          showDisconnectOverlay();
+          scheduleGuestReconnect(roomId, name);
+        }
+      });
+    });
+  });
+
   peer.on('open', () => {
     if (myGen !== guestConnGen) return;
     const conn = peer.connect('watashibunko-' + rid);
@@ -1164,7 +1245,7 @@ function joinRoom(rejoinInfo) {
       if (myGen !== guestConnGen) return;
       connected = true;
       const token = (function() { try { return sessionStorage.getItem('watashibunko_token') || ''; } catch(e) { return ''; } })();
-      conn.send({ type: 'join', name, token });
+      conn.send({ type: 'join', name, token, guestPeerId: peer.id });
     });
 
     conn.on('data', (d) => {
@@ -2070,7 +2151,7 @@ window.addEventListener('load', () => {
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.87</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.88</div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#f0c040;opacity:0.7;font-family:monospace;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>
 </body>
 </html>
