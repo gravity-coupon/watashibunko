@@ -298,7 +298,7 @@
     <p id="write-char" class="char-count char-ok">0 / 100</p>
     <button id="write-submit-btn" class="btn btn-primary btn-full" onclick="submitPart()">送信</button>
     <div id="write-submitted-msg" class="hidden text-center" style="margin-top:12px;">
-      <p style="color:#4ecdc4;font-size:14px;">✓ 送信済み（他のプレイヤーが完了するまで再提出できます）</p>
+      <p id="write-submitted-text" style="font-size:14px;"></p>
     </div>
     <div style="margin-top:20px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -894,13 +894,11 @@ function startGuestHeartbeat(rid, name) {
 function resetHeartbeatTimeout(rid, name) {
   if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
   heartbeatTimeout = setTimeout(() => {
-    // No ping from host for 15 seconds — connection is likely dead
-    if (currentScreenName !== 'title' && currentScreenName !== 'join' && currentScreenName !== 'results') {
-      dbg('GUEST heartbeat timeout, reconnecting');
-      showDisconnectOverlay();
-      if (hostConn) { try { hostConn.close(); } catch(e) {} }
-      scheduleGuestReconnect(rid, name);
-    }
+    if (currentScreenName === 'title' || currentScreenName === 'join') return;
+    if (gamePhase === 'idle') { stopHeartbeat(); return; }
+    dbg('GUEST heartbeat timeout, reconnecting silently');
+    if (hostConn) { try { hostConn.close(); } catch(e) {} }
+    scheduleGuestReconnect(rid, name);
   }, 15000);
 }
 
@@ -1204,8 +1202,10 @@ function handleHostMessage(conn, data) {
     }
   } else if (data.type === 'topicSubmit') {
     handleTopicFromPlayer(conn._playerIndex, data.topic);
+    try { conn.send({ type: 'topicAck' }); } catch(e) {}
   } else if (data.type === 'partSubmit') {
     handlePartFromPlayer(conn._playerIndex, data.storyIndex, data.round, data.text, data.isResubmit);
+    try { conn.send({ type: 'partAck' }); } catch(e) {}
   }
 }
 
@@ -1282,7 +1282,6 @@ function joinRoom(rejoinInfo) {
           const shouldReconnect = currentScreenName !== 'title' && currentScreenName !== 'join'
             && (currentScreenName !== 'results' || isSpectator);
           if (shouldReconnect) {
-            showDisconnectOverlay();
             scheduleGuestReconnect(roomId, name);
           }
         });
@@ -1353,7 +1352,6 @@ function setupGuestConnection(guestPeer, rid, name, myGen, isRejoin, retryCount,
     const shouldReconnect = currentScreenName !== 'title' && currentScreenName !== 'join'
       && (currentScreenName !== 'results' || isSpectator);
     if (shouldReconnect) {
-      showDisconnectOverlay();
       scheduleGuestReconnect(rid, name);
     }
   });
@@ -1473,6 +1471,7 @@ function handleGuestMessage(data) {
         mySubmitted = true;
         document.getElementById('write-submitted-msg').classList.remove('hidden');
         document.getElementById('write-submit-btn').textContent = '再提出';
+        setSubmitStatus('confirmed');
       } else {
         // Check if we had submitted locally but host didn't receive it — auto-resubmit
         const draft = loadDraft(gameState.currentRound, myStoryIndex);
@@ -1482,6 +1481,7 @@ function handleGuestMessage(data) {
           myLastSubmittedText = draft;
           document.getElementById('write-submitted-msg').classList.remove('hidden');
           document.getElementById('write-submit-btn').textContent = '再提出';
+          setSubmitStatus('sending');
         }
       }
       updateWriteProgress(roundDone.size, gameState.numPlayers);
@@ -1517,23 +1517,28 @@ function handleGuestMessage(data) {
     } else {
       updateWriteProgress(data.count, gameState.numPlayers);
     }
+  } else if (data.type === 'partAck') {
+    setSubmitStatus('confirmed');
+  } else if (data.type === 'topicAck') {
+    // Topic received by host
   } else if (data.type === 'showResults') {
     gameState = data.gameState;
     saveFinishedGame();
+    stopHeartbeat();
     showResults();
   } else if (data.type === 'gameEnd') {
-    // Host ended the game — stop reconnecting, stay on results or go to title
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     guestConnGen++;
     isSpectator = false;
+    stopHeartbeat();
     clearGuestState();
     if (peer) { peer.destroy(); peer = null; }
     hostConn = null;
   } else if (data.type === 'hostDisbanded') {
-    // Host closed the lobby — return to title
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     guestConnGen++;
     isSpectator = false;
+    stopHeartbeat();
     clearGuestState();
     if (peer) { peer.destroy(); peer = null; }
     hostConn = null;
@@ -1755,19 +1760,32 @@ function submitPart() {
   const isResubmit = mySubmitted;
   mySubmitted = true;
   myLastSubmittedText = text;
-  saveDraft(); // keep the submitted text for reload recovery
+  saveDraft();
 
   document.getElementById('write-submitted-msg').classList.remove('hidden');
   document.getElementById('write-submit-btn').textContent = '再提出';
 
   if (isHost) {
+    setSubmitStatus('confirmed');
     roundAdvanced = false;
     handlePartFromPlayer(0, myStoryIndex, gameState.currentRound, text, isResubmit);
     if (!roundAdvanced) {
       updateWriteProgress(roundDone.size, gameState.numPlayers);
     }
   } else {
+    setSubmitStatus('sending');
     hostConn.send({ type: 'partSubmit', storyIndex: myStoryIndex, round: gameState.currentRound, text, isResubmit });
+  }
+}
+
+function setSubmitStatus(status) {
+  const el = document.getElementById('write-submitted-text');
+  if (status === 'sending') {
+    el.style.color = '#f0c040';
+    el.textContent = '⏳ 送信中...';
+  } else {
+    el.style.color = '#4ecdc4';
+    el.textContent = '✓ 送信済み（他のプレイヤーが完了するまで再提出できます）';
   }
 }
 
@@ -2208,7 +2226,7 @@ window.addEventListener('load', () => {
   }
 });
 </script>
-<div id="version-label" style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.93</div>
+<div id="version-label" style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.94</div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#f0c040;opacity:0.7;font-family:monospace;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>
 <div id="debug-log" style="position:fixed;top:0;right:0;width:320px;max-height:40vh;overflow-y:auto;background:rgba(0,0,0,0.85);color:#0f0;font-size:10px;font-family:monospace;padding:4px 6px;z-index:9999;pointer-events:auto;display:none;white-space:pre-wrap;word-break:break-all;"></div>
 <script>
