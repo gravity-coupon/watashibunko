@@ -909,11 +909,10 @@ function initHostPeer(rid) {
   });
   peer.on('disconnected', () => {
     if (!peer || peer.destroyed) return;
-    // Try reconnect, with timeout fallback to full recreation
     try { peer.reconnect(); } catch(e) {}
     setTimeout(() => {
-      if (peer && !peer.destroyed && peer.disconnected) {
-        // reconnect() didn't work — recreate peer entirely
+      // Only recreate if still disconnected (not if reconnect succeeded)
+      if (peer && !peer.destroyed && peer.disconnected && !peer.open) {
         console.log('Host peer reconnect failed, recreating...');
         initHostPeer(rid);
       }
@@ -1242,13 +1241,20 @@ function joinRoom(rejoinInfo) {
 }
 
 let guestReconnectAttempt = 0;
-const MAX_RECONNECT_ATTEMPTS = 20; // give up after ~2 minutes
+const MAX_RECONNECT_ATTEMPTS = 20;
 
 function scheduleGuestReconnect(rid, name) {
   if (reconnectTimer) clearTimeout(reconnectTimer);
+  // Always use the most reliable source for name
+  const reliableName = name || (function() {
+    try {
+      const gs = JSON.parse(localStorage.getItem('watashibunko_guest') || '{}');
+      return gs.playerName || '';
+    } catch(e) { return ''; }
+  })();
+  if (!reliableName || !rid) return; // can't reconnect without name/room
   guestReconnectAttempt++;
   if (guestReconnectAttempt > MAX_RECONNECT_ATTEMPTS) {
-    // Give up — show error
     hideDisconnectOverlay();
     guestConnGen++;
     isSpectator = false;
@@ -1259,10 +1265,9 @@ function scheduleGuestReconnect(rid, name) {
     showScreen('title');
     return;
   }
-  // Backoff: 2s, 3s, 4s, 5s, 5s, 5s...
   const delay = Math.min(2000 + guestReconnectAttempt * 1000, 5000);
   reconnectTimer = setTimeout(() => {
-    joinRoom({ roomId: rid, playerName: name });
+    joinRoom({ roomId: rid, playerName: reliableName });
   }, delay);
 }
 
@@ -2065,7 +2070,7 @@ window.addEventListener('load', () => {
   }
 });
 </script>
-<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.86</div>
+<div style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v1.87</div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#f0c040;opacity:0.7;font-family:monospace;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>
 </body>
 </html>
