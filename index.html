@@ -957,7 +957,33 @@ function initHostPeer(rid) {
     conn.on('open', () => {
       conn._lastActivity = Date.now();
       conn.on('data', (data) => handleHostMessage(conn, data));
-      conn.on('close', () => { dbg('HOST conn.close: ' + conn._playerName); });
+      conn.on('close', () => {
+        dbg('HOST conn.close: ' + conn._playerName);
+        // In lobby phase, auto-remove disconnected guest
+        if (gamePhase === 'lobby' && conn._playerIndex >= 1) {
+          const idx = conn._playerIndex;
+          const stillConnected = connections.some(c => c._playerIndex === idx && c !== conn && c.open);
+          if (!stillConnected) {
+            const name = conn._playerName;
+            const pIdx = players.indexOf(name);
+            if (pIdx >= 1) {
+              players.splice(pIdx, 1);
+              playerTokens.splice(pIdx, 1);
+              connections = connections.filter(c => c !== conn);
+              connections.forEach(c => {
+                const newIdx = players.indexOf(c._playerName);
+                if (newIdx >= 0) {
+                  c._playerIndex = newIdx;
+                  c.send({ type: 'joined', playerIndex: newIdx, players: [...players] });
+                }
+              });
+              renderHostPlayers();
+              saveHostState();
+              dbg('HOST auto-removed from lobby: ' + name);
+            }
+          }
+        }
+      });
     });
   });
   peer.on('disconnected', () => {
@@ -1015,6 +1041,8 @@ function reconnectToGuests() {
         newConn.on('data', (data) => handleHostMessage(newConn, data));
         newConn.on('close', () => { dbg('HOST reverse conn.close: ' + pName); });
         // Send rejoinState so guest can recover
+        const revToken = generateToken();
+        playerTokens[pIdx] = revToken;
         newConn.send({
           type: 'rejoinState',
           playerIndex: pIdx,
@@ -1027,6 +1055,7 @@ function reconnectToGuests() {
           topicsDone: topicsCollected.filter(t => t != null && t !== '').length,
           topicsTotal: topicsCollected.length,
           isReverseConnection: true,
+          token: revToken,
         });
       });
       newConn.on('error', () => {
@@ -1111,11 +1140,18 @@ function handleHostMessage(conn, data) {
     // Check if this is a rejoin (same name as existing player) during game
     const existingIdx = players.indexOf(data.name);
     if (existingIdx >= 1 && gamePhase !== 'lobby') {
-      // Verify token for game-phase rejoin (skip for results — game is over)
-      if (gamePhase !== 'results' && playerTokens[existingIdx] && data.token !== playerTokens[existingIdx]) {
+      // Verify token for game-phase rejoin
+      // Skip check if: game is over (results), OR existing connection is dead (orphan recovery)
+      const now = Date.now();
+      const ORPHAN_THRESHOLD = 15000;
+      const existingConnAlive = connections.some(c => c._playerIndex === existingIdx && (now - (c._lastActivity || 0)) < ORPHAN_THRESHOLD);
+      if (gamePhase !== 'results' && existingConnAlive && playerTokens[existingIdx] && data.token !== playerTokens[existingIdx]) {
         conn.send({ type: 'joinError', message: 'その名前は既に使われています。別の名前でお試しください。' });
         return;
       }
+      // Issue a new token for this player
+      const newToken = generateToken();
+      playerTokens[existingIdx] = newToken;
       conn._playerIndex = existingIdx;
       conn._playerName = data.name;
       conn._guestPeerId = data.guestPeerId || null;
@@ -1132,6 +1168,7 @@ function handleHostMessage(conn, data) {
         topicAlreadySubmitted: topicsCollected[existingIdx] != null && topicsCollected[existingIdx] !== '',
         topicsDone: topicsCollected.filter(t => t != null && t !== '').length,
         topicsTotal: topicsCollected.length,
+        token: newToken,
       });
       return;
     }
@@ -1497,11 +1534,11 @@ function handleGuestMessage(data) {
     showScreen('join');
 
   } else if (data.type === 'rejoinState') {
-    // Recovering after rejoin
     myIndex = data.playerIndex;
     players = data.players;
     gameState = data.gameState;
     roundDone = new Set(data.roundDoneList || []);
+    if (data.token) { try { sessionStorage.setItem('watashibunko_token', data.token); } catch(e) {} }
     const phase = data.gamePhase;
     hideDisconnectOverlay();
     resetReconnectAttempts();
@@ -2307,7 +2344,7 @@ window.addEventListener('load', () => {
   updateRejoinButton();
 });
 </script>
-<div id="version-label" style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v2.01</div>
+<div id="version-label" style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v2.02</div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#f0c040;opacity:0.7;font-family:monospace;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>
 <div id="debug-log" style="position:fixed;top:0;right:0;width:320px;max-height:40vh;overflow-y:auto;background:rgba(0,0,0,0.85);color:#0f0;font-size:10px;font-family:monospace;padding:4px 6px;z-index:9999;pointer-events:auto;display:none;white-space:pre-wrap;word-break:break-all;"></div>
 <script>
