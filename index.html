@@ -1038,7 +1038,7 @@ function reconnectToGuests() {
         newConn.on('data', (data) => handleHostMessage(newConn, data));
         newConn.on('close', () => { dbg('HOST reverse conn.close: ' + pName); });
         // Send rejoinState so guest can recover
-        const revToken = generateToken();
+        const revToken = playerTokens[pIdx] || generateToken();
         playerTokens[pIdx] = revToken;
         newConn.send({
           type: 'rejoinState',
@@ -1151,8 +1151,8 @@ function handleHostMessage(conn, data) {
         }
         // Connection is dead — allow orphan recovery
       }
-      // Issue a new token for this player
-      const newToken = generateToken();
+      // Reuse existing token for same person; generate new only for orphan recovery (no matching token)
+      const newToken = tokenMatch ? playerTokens[existingIdx] : generateToken();
       playerTokens[existingIdx] = newToken;
       conn._playerIndex = existingIdx;
       conn._playerName = data.name;
@@ -2417,7 +2417,7 @@ window.addEventListener('load', () => {
   updateRejoinButton();
 });
 </script>
-<div id="version-label" style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v2.11</div>
+<div id="version-label" style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v2.12</div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#f0c040;opacity:0.7;font-family:monospace;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>
 <div id="debug-log" style="position:fixed;top:0;right:0;width:320px;max-height:40vh;overflow-y:auto;background:rgba(0,0,0,0.85);color:#0f0;font-size:10px;font-family:monospace;padding:4px 6px;z-index:9999;pointer-events:auto;display:none;white-space:pre-wrap;word-break:break-all;"></div>
 <script>
