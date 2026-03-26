@@ -909,6 +909,7 @@ function resetHeartbeatTimeout(rid, name) {
     if (currentScreenName === 'title' || currentScreenName === 'join') return;
     if (gamePhase === 'idle') { stopHeartbeat(); return; }
     dbg('GUEST heartbeat timeout, reconnecting silently');
+    gtag('event', 'connection_lost', { phase: gamePhase });
     if (hostConn) { try { hostConn.close(); } catch(e) {} }
     scheduleGuestReconnect(rid, name);
   }, 15000);
@@ -1078,6 +1079,7 @@ function showHostSetup() {
   myIndex = 0;
   roomId = generateRoomId();
   gamePhase = 'lobby';
+  gtag('event', 'create_room', { room_id: roomId });
   document.getElementById('host-room-code').textContent = roomId;
   // Prefill saved name
   const savedName = (function() { try { return localStorage.getItem('watashibunko_name') || ''; } catch(e) { return ''; } })();
@@ -1338,6 +1340,7 @@ let _rejoinOrigText = '';
 function rejoinLastRoom() {
   const last = loadLastRoom();
   if (!last || !last.roomId || !last.playerName) return;
+  gtag('event', 'rejoin_room', { room_id: last.roomId });
   const btn = document.getElementById('rejoin-btn');
   _rejoinOrigText = btn.textContent;
   btn.textContent = '接続中...';
@@ -1409,7 +1412,8 @@ function joinRoom(rejoinInfo) {
             dbg('GUEST reverse conn accepted!');
             hostConn = reverseConn;
             guestConnected = true;
-            guestConnGen++; // invalidate any pending retries
+            guestConnGen++;
+            if (guestReconnectAttempt > 0) gtag('event', 'reconnect_success', { method: 'reverse', attempts: guestReconnectAttempt });
             resetReconnectAttempts();
             handleGuestMessage(d);
           } else {
@@ -1530,6 +1534,7 @@ function scheduleGuestReconnect(rid, name) {
   guestReconnectAttempt++;
   dbg('GUEST reconnect attempt=' + guestReconnectAttempt + '/' + MAX_RECONNECT_ATTEMPTS + ' peer=' + (peer ? (peer.open ? 'open:' + peer.id : 'not-open') : 'null'));
   if (guestReconnectAttempt > MAX_RECONNECT_ATTEMPTS) {
+    gtag('event', 'reconnect_fail', { attempts: MAX_RECONNECT_ATTEMPTS });
     hideDisconnectOverlay();
     guestConnGen++;
     isSpectator = false;
@@ -1566,6 +1571,7 @@ function handleGuestMessage(data) {
     players = data.players;
     if (data.token) { saveToken(data.token); }
     saveLastRoom(roomId, players[myIndex], data.token);
+    gtag('event', 'join_room', { room_id: roomId });
     const rBtn = document.getElementById('rejoin-btn');
     if (rBtn._failTimer) { clearTimeout(rBtn._failTimer); rBtn._failTimer = null; }
     document.getElementById('lobby-title').textContent = '参加しました！';
@@ -1593,6 +1599,7 @@ function handleGuestMessage(data) {
     if (data.token) { saveToken(data.token); }
     const phase = data.gamePhase;
     hideDisconnectOverlay();
+    if (guestReconnectAttempt > 0) gtag('event', 'reconnect_success', { attempts: guestReconnectAttempt });
     resetReconnectAttempts();
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     const rBtn = document.getElementById('rejoin-btn');
@@ -1711,9 +1718,9 @@ function handleGuestMessage(data) {
     hostConn = null;
     showScreen('title');
   } else if (data.type === 'spectatorState') {
-    // Spectator mode — show current stories or waiting message
     isSpectator = true;
     gameState = data.gameState;
+    gtag('event', 'spectator_join');
     hideDisconnectOverlay();
     resetReconnectAttempts();
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
@@ -1771,6 +1778,7 @@ function handleGuestMessage(data) {
 function startGame() {
   topicsCollected = new Array(players.length);
   gamePhase = 'topic';
+  gtag('event', 'game_start', { player_count: players.length, page_count: numPages });
   document.getElementById('topic-input').value = '';
   showScreen('topic');
   broadcast({ type: 'startTopicPhase' });
@@ -1788,6 +1796,7 @@ let topicsComplete = false;
 function submitTopic() {
   const topic = document.getElementById('topic-input').value.trim();
   if (!topic) return;
+  gtag('event', 'submit_topic');
   if (isHost) {
     topicsComplete = false;
     handleTopicFromPlayer(0, topic);
@@ -1927,6 +1936,7 @@ let roundAdvanced = false;
 function submitPart() {
   const text = document.getElementById('write-input').value.trim();
   if (!text || text.length > CHAR_LIMIT) return;
+  gtag('event', 'submit_part', { round: gameState ? gameState.currentRound + 1 : 0 });
   const isResubmit = mySubmitted;
   mySubmitted = true;
   myLastSubmittedText = text;
@@ -2015,6 +2025,7 @@ function handlePartFromPlayer(pIdx, storyIndex, round, text, isResubmit) {
     const next = gameState.currentRound + 1;
     if (next >= gameState.totalRounds) {
       gamePhase = 'results';
+      gtag('event', 'game_complete', { player_count: gameState.numPlayers, page_count: gameState.totalRounds });
       broadcast({ type: 'showResults', gameState: JSON.parse(JSON.stringify(gameState)) });
       broadcastToSpectators();
       saveHostState();
@@ -2121,6 +2132,7 @@ function renderThemeSelector() {
 function applyTheme(themeId) {
   const t = STORY_THEMES.find(th => th.id === themeId);
   if (!t) return;
+  if (currentTheme.id !== t.id) gtag('event', 'change_theme', { theme: themeId });
   currentTheme = t;
   const el = document.getElementById('results-story');
   el.style.background = t.gradient;
@@ -2140,6 +2152,7 @@ function restoreTheme() {
 }
 
 function changeStoryFont(fontFamily) {
+  gtag('event', 'change_font', { font: fontFamily });
   document.getElementById('results-story').style.fontFamily = fontFamily;
   document.getElementById('story-font-select').style.fontFamily = fontFamily;
   try { localStorage.setItem('watashibunko_storyfont', fontFamily); } catch(e) {}
@@ -2227,6 +2240,7 @@ function confirmAbortGame() {
 
 function abortGame() {
   if (!isHost || !gameState) return;
+  gtag('event', 'game_abort', { phase: gamePhase, round: gameState.currentRound, total_rounds: gameState.totalRounds });
   gamePhase = 'results';
   broadcast({ type: 'showResults', gameState: JSON.parse(JSON.stringify(gameState)) });
   broadcastToSpectators();
@@ -2237,6 +2251,7 @@ function abortGame() {
 
 function abortGameToTitle() {
   if (!isHost) return;
+  gtag('event', 'game_abort', { phase: gamePhase, action: 'back_to_title' });
   broadcast({ type: 'hostDisbanded' });
   spectators.forEach(c => { if (c.open) c.send({ type: 'hostDisbanded' }); });
   setTimeout(() => {
@@ -2305,6 +2320,7 @@ document.addEventListener('click', (e) => {
 });
 
 function copyStoryAsText(mode) {
+  gtag('event', 'copy_story', { mode: mode });
   const story = gameState.stories[currentStoryView];
   let text = '';
 
@@ -2340,6 +2356,7 @@ function copyStoryAsText(mode) {
 }
 
 function saveStoryAsImage() {
+  gtag('event', 'screenshot_story');
   const el = document.getElementById('results-story');
   showCopyFeedback('画像を生成中...');
   html2canvas(el, {
@@ -2434,7 +2451,7 @@ window.addEventListener('load', () => {
   updateRejoinButton();
 });
 </script>
-<div id="version-label" style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v2.21</div>
+<div id="version-label" style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v2.22</div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#f0c040;opacity:0.7;font-family:'Nunito',sans-serif;font-weight:700;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>
 <div id="debug-log" style="position:fixed;top:0;right:0;width:320px;max-height:40vh;overflow-y:auto;background:rgba(0,0,0,0.85);color:#0f0;font-size:10px;font-family:monospace;padding:4px 6px;z-index:9999;pointer-events:auto;display:none;white-space:pre-wrap;word-break:break-all;"></div>
 <script>
