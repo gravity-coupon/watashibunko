@@ -2031,7 +2031,7 @@ function handleGuestMessage(data) {
         const savedTopic = (function() { try { return sessionStorage.getItem('watashibunko_topic') || ''; } catch(e) { return ''; } })();
         if (savedTopic) {
           // Auto-resend saved topic
-          initTopicScreen(topicCount, topicTotal);
+          initTopicScreen(topicCount, topicTotal, true);
           document.getElementById('topic-input').value = savedTopic;
           myTopicSubmitted = true;
           document.getElementById('topic-submitted-msg').classList.remove('hidden');
@@ -2039,12 +2039,12 @@ function handleGuestMessage(data) {
           setTopicSubmitStatus('sending');
           hostConn.send({ type: 'topicSubmit', topic: savedTopic });
         } else {
-          initTopicScreen(topicCount, topicTotal);
+          initTopicScreen(topicCount, topicTotal, true);
         }
       } else {
         // Already submitted — show topic screen with submitted state
         const savedTopic = (function() { try { return sessionStorage.getItem('watashibunko_topic') || ''; } catch(e) { return ''; } })();
-        initTopicScreen(topicCount, topicTotal);
+        initTopicScreen(topicCount, topicTotal, true);
         if (savedTopic) document.getElementById('topic-input').value = savedTopic;
         myTopicSubmitted = true;
         document.getElementById('topic-submitted-msg').classList.remove('hidden');
@@ -2093,7 +2093,7 @@ function handleGuestMessage(data) {
   } else if (data.type === 'startTopicPhase') {
     try { sessionStorage.removeItem('watashibunko_topic'); } catch(e) {}
     if (roomId) startGuestHeartbeat(roomId, players[myIndex] || '');
-    initTopicScreen(0, players.length);
+    initTopicScreen(0, players.length, true);
   } else if (data.type === 'topicProgress') {
     updateTopicProgress(data.count, data.total);
   } else if (data.type === 'startWriting') {
@@ -2204,7 +2204,7 @@ function startGame() {
   topicsCollected = new Array(players.length);
   gamePhase = 'topic';
   gtag('event', 'game_start', { player_count: players.length, page_count: numPages });
-  initTopicScreen(0, players.length);
+  initTopicScreen(0, players.length, true);
   broadcast({ type: 'startTopicPhase' });
   startHostHeartbeat();
   saveHostState();
@@ -2255,7 +2255,19 @@ function updateTopicProgress(done, total) {
   if (isHost) renderHostTopicStatusInline();
 }
 
-function initTopicScreen(done, total) {
+function initTopicScreen(done, total, forceReset) {
+  // Preserve input and status if user already submitted and we're already on topic screen
+  if (!forceReset && myTopicSubmitted && currentScreenName === 'topic') {
+    // Just update progress, don't reset input/status
+    updateTopicProgress(done || 0, total || players.length);
+    return;
+  }
+  if (!forceReset && myTopicSubmitted) {
+    // Switching to topic screen but preserving submitted state
+    updateTopicProgress(done || 0, total || players.length);
+    showScreen('topic');
+    return;
+  }
   myTopicSubmitted = false;
   document.getElementById('topic-input').value = '';
   document.getElementById('topic-submit-btn').textContent = '決定';
@@ -2890,7 +2902,7 @@ window.addEventListener('load', () => {
   updateRejoinButton();
 });
 </script>
-<div id="version-label" style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v2.25</div>
+<div id="version-label" style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;">v2.26</div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#f0c040;opacity:0.7;font-family:'Nunito',sans-serif;font-weight:700;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>
 <div id="debug-log" style="position:fixed;top:0;right:0;width:320px;max-height:40vh;overflow-y:auto;background:rgba(0,0,0,0.85);color:#0f0;font-size:10px;font-family:monospace;padding:4px 6px;z-index:9999;pointer-events:auto;display:none;white-space:pre-wrap;word-break:break-all;"></div>
 <script>
