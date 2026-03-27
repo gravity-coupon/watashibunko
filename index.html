@@ -9,7 +9,7 @@
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
-  const APP_VERSION = 'v2.29';
+  const APP_VERSION = 'v2.30';
   gtag('js', new Date());
   gtag('set', { 'app_version': APP_VERSION });
   gtag('config', 'G-341D8LEXRV');
@@ -2729,7 +2729,7 @@ function renderResultsTabs() {
   gameState.stories.forEach((s, i) => {
     const btn = document.createElement('button');
     btn.className = 'story-tab' + (i === currentStoryView ? ' active' : '');
-    btn.textContent = (i + 1) + '. ' + s.title;
+    btn.textContent = s.title;
     btn.onclick = () => { currentStoryView = i; renderResultsTabs(); renderStory(i); };
     cont.appendChild(btn);
   });
