@@ -12,7 +12,7 @@
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
-  const APP_VERSION = 'v2.32';
+  const APP_VERSION = 'v2.33';
   gtag('js', new Date());
   gtag('set', { 'app_version': APP_VERSION });
   gtag('config', 'G-341D8LEXRV');
@@ -222,6 +222,12 @@
     <div class="mb-24">
       <label class="text-dim" style="font-size:14px;display:block;margin-bottom:6px;">ページ数（ラウンド数）</label>
       <div id="page-select" class="flex-row"></div>
+    </div>
+    <div class="mb-24">
+      <label style="font-size:14px;display:flex;align-items:center;gap:8px;cursor:pointer;color:#ccc;">
+        <input type="checkbox" id="anonymous-mode" style="width:18px;height:18px;cursor:pointer;">
+        <span>匿名モード<span class="text-dim" style="font-size:12px;margin-left:4px;">（結果画面で著者名を伏せる）</span></span>
+      </label>
     </div>
     <div class="mb-24">
       <p class="text-dim mb-8" style="font-size:14px;">参加者 (<span id="host-player-count">0</span>人)</p>
@@ -2389,7 +2395,7 @@ function handleTopicFromPlayer(pIdx, topic) {
     const np = total;
     const shifts = generateRotation(np, numPages);
     const stories = topicsCollected.map((t, i) => ({ title: t || '無題', parts: [], originalPlayerIndex: i }));
-    gameState = { stories, currentRound: 0, totalRounds: numPages, shifts, numPlayers: np, players: [...players] };
+    gameState = { stories, currentRound: 0, totalRounds: numPages, shifts, numPlayers: np, players: [...players], anonymous: !!document.getElementById('anonymous-mode').checked };
     gamePhase = 'writing';
     broadcast({ type: 'startWriting', gameState: JSON.parse(JSON.stringify(gameState)) });
     broadcastToSpectators();
@@ -2759,11 +2765,16 @@ function getPlayerColor(authorName) {
 function renderStory(idx) {
   const story = gameState.stories[idx];
   const t = currentTheme;
+  const anon = gameState.anonymous;
   let html = '<h3 style="font-size:22px;text-align:center;margin-bottom:24px;color:' + t.title + ';">「' + escHtml(story.title) + '」</h3>';
   story.parts.forEach((part, i) => {
-    const color = getPlayerColor(part.author);
+    const color = anon ? t.meta : getPlayerColor(part.author);
     html += '<div class="part-block" style="border-left:3px solid ' + color + ';">';
-    html += '<p style="font-size:12px;margin-bottom:4px;"><span style="color:' + color + ';font-weight:700;">' + escHtml(part.author) + '</span> <span style="color:' + t.meta + ';">— ページ ' + (i + 1) + '</span></p>';
+    if (anon) {
+      html += '<p style="font-size:12px;margin-bottom:4px;color:' + t.meta + ';">ページ ' + (i + 1) + '</p>';
+    } else {
+      html += '<p style="font-size:12px;margin-bottom:4px;"><span style="color:' + color + ';font-weight:700;">' + escHtml(part.author) + '</span> <span style="color:' + t.meta + ';">— ページ ' + (i + 1) + '</span></p>';
+    }
     html += '<p style="font-size:16px;line-height:1.8;white-space:pre-wrap;">' + escHtml(part.text) + '</p>';
     html += '</div>';
   });
@@ -2888,7 +2899,11 @@ function copyStoryAsText(mode) {
     text += '「' + story.title + '」\n';
     text += '━━━━━━━━━━━━━━━━\n\n';
     story.parts.forEach((part, i) => {
-      text += '【ページ ' + (i + 1) + '】' + part.author + '\n';
+      if (gameState.anonymous) {
+        text += '【ページ ' + (i + 1) + '】\n';
+      } else {
+        text += '【ページ ' + (i + 1) + '】' + part.author + '\n';
+      }
       text += part.text + '\n\n';
     });
     text += '━━━━━━━━━━━━━━━━';
