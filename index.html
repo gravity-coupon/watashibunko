@@ -9,7 +9,7 @@
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
-  const APP_VERSION = 'v2.30';
+  const APP_VERSION = 'v2.31';
   gtag('js', new Date());
   gtag('set', { 'app_version': APP_VERSION });
   gtag('config', 'G-341D8LEXRV');
@@ -1862,6 +1862,7 @@ function joinRoom(rejoinInfo) {
           document.getElementById('join-error').textContent = 'ルームが見つかりません。ルームコード（5文字）が正しいか確認してください。';
           document.getElementById('join-btn').textContent = '参加する';
           document.getElementById('join-btn').disabled = false;
+          gtag('event', 'join_fail', { reason: 'room_not_found' });
         }
       } else {
         scheduleGuestReconnect(rid, name);
@@ -1882,6 +1883,7 @@ function joinRoom(rejoinInfo) {
           document.getElementById('join-error').textContent = 'ホストが応答しません。ルームコード（5文字）を確認してください。ホストがアプリを開いていない可能性があります。';
           document.getElementById('join-btn').textContent = '参加する';
           document.getElementById('join-btn').disabled = false;
+          gtag('event', 'join_fail', { reason: 'timeout' });
         }
       }
     }, 3000);
@@ -1925,6 +1927,7 @@ function setupGuestConnection(guestPeer, rid, name, myGen, isRejoin, retryCount,
         document.getElementById('join-error').textContent = '接続に失敗しました。ネットワーク環境を確認し、もう一度お試しください。';
         document.getElementById('join-btn').textContent = '参加する';
         document.getElementById('join-btn').disabled = false;
+        gtag('event', 'join_fail', { reason: 'network_error' });
       }
     } else {
       scheduleGuestReconnect(rid, name);
@@ -1999,6 +2002,7 @@ function handleGuestMessage(data) {
     saveGuestState();
 
   } else if (data.type === 'joinError') {
+    gtag('event', 'join_fail', { reason: 'name_conflict' });
     const rBtn = document.getElementById('rejoin-btn');
     if (rBtn._failTimer) { clearTimeout(rBtn._failTimer); rBtn._failTimer = null; }
     document.getElementById('join-error').textContent = data.message;
@@ -2118,6 +2122,7 @@ function handleGuestMessage(data) {
     topicAckReceived = false;
     if (topicRetryTimer) { clearTimeout(topicRetryTimer); topicRetryTimer = null; }
     if (roomId) startGuestHeartbeat(roomId, players[myIndex] || '');
+    gtag('event', 'game_play', { role: 'guest', player_count: players.length });
     initTopicScreen(0, players.length, true);
   } else if (data.type === 'topicProgress') {
     updateTopicProgress(data.count, data.total);
@@ -2239,6 +2244,7 @@ function startGame() {
   topicsCollected = new Array(players.length);
   gamePhase = 'topic';
   gtag('event', 'game_start', { player_count: players.length, page_count: numPages });
+  gtag('event', 'game_play', { role: 'host', player_count: players.length, page_count: numPages });
   initTopicScreen(0, players.length, true);
   broadcast({ type: 'startTopicPhase' });
   startHostHeartbeat();
