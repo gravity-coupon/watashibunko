@@ -12,7 +12,7 @@
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
-  const APP_VERSION = 'v2.34';
+  const APP_VERSION = 'v2.36';
   gtag('js', new Date());
   gtag('set', { 'app_version': APP_VERSION });
   gtag('config', 'G-341D8LEXRV');
@@ -102,6 +102,31 @@
   .page-select-btn.active {
     border-color: #e94560; background: rgba(233,69,96,0.13); color: #e94560;
   }
+
+  .timer-option {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 14px; border-radius: 10px; cursor: pointer;
+    border: 2px solid #2a3a5e; background: transparent; color: #8899aa;
+    transition: all 0.15s ease; font-family: 'Noto Sans JP', sans-serif;
+    font-size: 14px; width: 100%;
+  }
+  .timer-option.active {
+    border-color: #e94560; background: rgba(233,69,96,0.13); color: #e94560;
+  }
+  .timer-option .timer-label { font-weight: 700; font-size: 16px; }
+  .timer-option .timer-desc { font-size: 12px; opacity: 0.7; }
+
+  .countdown-bar {
+    width: 100%; height: 6px; border-radius: 3px;
+    background: rgba(255,255,255,0.08); overflow: hidden; margin-top: 4px;
+  }
+  .countdown-fill {
+    height: 100%; border-radius: 3px; transition: width 0.3s linear;
+    background: linear-gradient(90deg, #4ecdc4, #f0c040);
+  }
+  .countdown-fill.urgent { background: linear-gradient(90deg, #f0c040, #e94560); }
+  .countdown-fill.critical { background: #e94560; }
+  .countdown-text { font-size: 14px; font-weight: 700; font-family: 'Nunito', monospace; }
 
   .story-tab {
     padding: 8px 16px; border-radius: 10px; cursor: pointer;
@@ -230,6 +255,10 @@
       </label>
     </div>
     <div class="mb-24">
+      <label class="text-dim" style="font-size:14px;display:block;margin-bottom:6px;">制限時間（1ページあたり）</label>
+      <div id="timer-select" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;"></div>
+    </div>
+    <div class="mb-24">
       <p class="text-dim mb-8" style="font-size:14px;">参加者 (<span id="host-player-count">0</span>人)</p>
       <div id="host-player-list" class="flex-center"></div>
     </div>
@@ -284,6 +313,13 @@
     <div id="topic-submitted-msg" class="hidden text-center" style="margin-top:12px;">
       <p id="topic-submitted-text" style="font-size:14px;"></p>
     </div>
+    <div id="topic-timer" class="hidden" style="margin-top:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span class="text-dim" style="font-size:13px;">⏱ 残り時間</span>
+        <span id="topic-timer-text" class="countdown-text" style="color:#4ecdc4;"></span>
+      </div>
+      <div class="countdown-bar"><div id="topic-timer-bar" class="countdown-fill" style="width:100%;"></div></div>
+    </div>
     <div style="margin-top:20px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
         <span class="text-dim" style="font-size:13px;">進捗</span>
@@ -320,6 +356,13 @@
     <button id="write-submit-btn" class="btn btn-primary btn-full" onclick="submitPart()">送信</button>
     <div id="write-submitted-msg" class="hidden text-center" style="margin-top:12px;">
       <p id="write-submitted-text" style="font-size:14px;"></p>
+    </div>
+    <div id="write-timer" class="hidden" style="margin-top:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span class="text-dim" style="font-size:13px;">⏱ 残り時間</span>
+        <span id="write-timer-text" class="countdown-text" style="color:#4ecdc4;"></span>
+      </div>
+      <div class="countdown-bar"><div id="write-timer-bar" class="countdown-fill" style="width:100%;"></div></div>
     </div>
     <div style="margin-top:20px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -390,6 +433,17 @@ let isHost = false;
 let myIndex = 0;
 let roomId = "";
 let numPages = 4;
+let timerSec = 0; // default: no limit
+const TIMER_OPTIONS = [
+  { sec: 0,   label: 'なし', desc: '無制限。のんびり' },
+  { sec: 120, label: '2:00', desc: '爆速。駄文上等' },
+  { sec: 150, label: '2:30', desc: '高速。勢いで書く' },
+  { sec: 180, label: '3:00', desc: 'ちょい速。手慣れた人向け' },
+  { sec: 210, label: '3:30', desc: '標準。迷える余裕あり' },
+  { sec: 240, label: '4:00', desc: 'ゆとり。じっくり考える' },
+  { sec: 270, label: '4:30', desc: 'まったり。推敲もできる' },
+  { sec: 300, label: '5:00', desc: '長考。完璧を目指す' },
+];
 let players = [];
 let topicsCollected = [];
 let gameState = null;
@@ -410,7 +464,7 @@ function saveHostState() {
   if (!isHost) return;
   try {
     localStorage.setItem(LS_HOST, JSON.stringify({
-      roomId, numPages, players, topicsCollected: topicsCollected || [],
+      roomId, numPages, timerSec, players, topicsCollected: topicsCollected || [],
       gameState: gameState ? JSON.parse(JSON.stringify(gameState)) : null,
       roundDoneList: [...roundDone], gamePhase, playerTokens,
     }));
@@ -1527,6 +1581,7 @@ function showHostSetup() {
   const savedName = (function() { try { return localStorage.getItem('watashibunko_name') || ''; } catch(e) { return ''; } })();
   if (savedName) document.getElementById('host-name').value = savedName;
   renderPageSelect();
+  renderTimerSelect();
   showScreen('host');
 
   initHostPeer(roomId);
@@ -1552,6 +1607,18 @@ function renderPageSelect() {
     btn.className = 'page-select-btn' + (n === numPages ? ' active' : '');
     btn.textContent = n;
     btn.onclick = () => { numPages = n; renderPageSelect(); };
+    cont.appendChild(btn);
+  });
+}
+
+function renderTimerSelect() {
+  const cont = document.getElementById('timer-select');
+  cont.innerHTML = '';
+  TIMER_OPTIONS.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = 'timer-option' + (opt.sec === timerSec ? ' active' : '');
+    btn.innerHTML = '<span class="timer-label">' + opt.label + '</span><span class="timer-desc">' + opt.desc + '</span>';
+    btn.onclick = () => { timerSec = opt.sec; renderTimerSelect(); };
     cont.appendChild(btn);
   });
 }
@@ -2180,7 +2247,12 @@ function handleGuestMessage(data) {
     topicAckReceived = true;
     if (topicRetryTimer) { clearTimeout(topicRetryTimer); topicRetryTimer = null; }
     setTopicSubmitStatus('confirmed');
+  } else if (data.type === 'timerStart') {
+    startCountdown(data.phase, data.totalSec);
+  } else if (data.type === 'timeUp') {
+    guestHandleTimeUp();
   } else if (data.type === 'showResults') {
+    stopCountdown();
     clearTopicDraft();
     gameState = data.gameState;
     if (topicRetryTimer) { clearTimeout(topicRetryTimer); topicRetryTimer = null; }
@@ -2189,6 +2261,7 @@ function handleGuestMessage(data) {
     stopHeartbeat();
     showResults();
   } else if (data.type === 'gameEnd') {
+    stopCountdown();
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     if (topicRetryTimer) { clearTimeout(topicRetryTimer); topicRetryTimer = null; }
     topicAckReceived = false;
@@ -2199,6 +2272,7 @@ function handleGuestMessage(data) {
     if (peer) { peer.destroy(); peer = null; }
     hostConn = null;
   } else if (data.type === 'hostDisbanded') {
+    stopCountdown();
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     if (topicRetryTimer) { clearTimeout(topicRetryTimer); topicRetryTimer = null; }
     topicAckReceived = false;
@@ -2273,9 +2347,10 @@ function startGame() {
   gtag('event', 'game_start', { player_count: players.length, page_count: numPages });
   gtag('event', 'game_play', { role: 'host', player_count: players.length, page_count: numPages });
   initTopicScreen(0, players.length, true);
-  broadcast({ type: 'startTopicPhase' });
+  broadcast({ type: 'startTopicPhase', timerSec });
   startHostHeartbeat();
   saveHostState();
+  hostStartTimer('topic', timerSec);
 }
 
 // ===================== TOPIC =====================
@@ -2410,6 +2485,7 @@ function handleTopicFromPlayer(pIdx, topic) {
   saveHostState();
   if (count === total) {
     topicsComplete = true;
+    stopCountdown();
     const np = total;
     const shifts = generateRotation(np, numPages);
     const stories = topicsCollected.map((t, i) => ({ title: t || '無題', parts: [], originalPlayerIndex: i }));
@@ -2418,7 +2494,7 @@ function handleTopicFromPlayer(pIdx, topic) {
       const j = Math.floor(Math.random() * (i + 1));
       [stories[i], stories[j]] = [stories[j], stories[i]];
     }
-    gameState = { stories, currentRound: 0, totalRounds: numPages, shifts, numPlayers: np, players: [...players], anonymous: !!document.getElementById('anonymous-mode').checked };
+    gameState = { stories, currentRound: 0, totalRounds: numPages, shifts, numPlayers: np, players: [...players], anonymous: !!document.getElementById('anonymous-mode').checked, timerSec };
     gamePhase = 'writing';
     broadcast({ type: 'startWriting', gameState: JSON.parse(JSON.stringify(gameState)) });
     broadcastToSpectators();
@@ -2474,6 +2550,9 @@ function startWritingRound(round) {
   updateWriteProgress(isRestoring ? roundDone.size : 0, np);
   document.getElementById('host-panel-write').classList.toggle('hidden', !isHost);
   showScreen('writing');
+  if (isHost && !isRestoring) {
+    hostStartTimer('writing', gameState.timerSec || timerSec);
+  }
 }
 
 const CHAR_LIMIT = 100;
@@ -2639,6 +2718,128 @@ function handlePartFromPlayer(pIdx, storyIndex, round, text, isResubmit) {
   }
 }
 
+// ===================== COUNTDOWN TIMER =====================
+let countdownDeadline = 0;
+let countdownTotal = 0;
+let countdownInterval = null;
+let hostTimerTimeout = null;
+let hostGraceTimeout = null;
+
+function startCountdown(phase, totalSec) {
+  stopCountdown();
+  countdownTotal = totalSec * 1000;
+  countdownDeadline = Date.now() + countdownTotal;
+  const prefix = phase === 'topic' ? 'topic' : 'write';
+  const timerEl = document.getElementById(prefix + '-timer');
+  if (timerEl) timerEl.classList.remove('hidden');
+  countdownInterval = setInterval(() => updateCountdownUI(prefix), 200);
+  updateCountdownUI(prefix);
+}
+
+function stopCountdown() {
+  if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+  if (hostTimerTimeout) { clearTimeout(hostTimerTimeout); hostTimerTimeout = null; }
+  if (hostGraceTimeout) { clearTimeout(hostGraceTimeout); hostGraceTimeout = null; }
+  countdownDeadline = 0;
+  ['topic-timer', 'write-timer'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('hidden');
+  });
+}
+
+function updateCountdownUI(prefix) {
+  const remaining = Math.max(0, countdownDeadline - Date.now());
+  const sec = Math.ceil(remaining / 1000);
+  const min = Math.floor(sec / 60);
+  const s = sec % 60;
+  const textEl = document.getElementById(prefix + '-timer-text');
+  const barEl = document.getElementById(prefix + '-timer-bar');
+  if (!textEl || !barEl) return;
+  textEl.textContent = min + ':' + String(s).padStart(2, '0');
+  const pct = countdownTotal > 0 ? (remaining / countdownTotal) * 100 : 0;
+  barEl.style.width = pct + '%';
+  barEl.className = 'countdown-fill' + (pct <= 15 ? ' critical' : pct <= 33 ? ' urgent' : '');
+  textEl.style.color = pct <= 15 ? '#e94560' : pct <= 33 ? '#f0c040' : '#4ecdc4';
+}
+
+// Host starts the authoritative timer for a phase
+function hostStartTimer(phase, totalSec) {
+  if (!isHost || !totalSec) return;
+  broadcast({ type: 'timerStart', phase, totalSec });
+  broadcastToSpectators();
+  startCountdown(phase, totalSec);
+  hostTimerTimeout = setTimeout(() => {
+    hostEnforceTimeUp(phase);
+  }, totalSec * 1000);
+}
+
+function hostEnforceTimeUp(phase) {
+  if (!isHost) return;
+  // Notify all guests — they auto-submit current text
+  broadcast({ type: 'timeUp' });
+  if (phase === 'topic') {
+    // Grace period: let guests send their typed topics, then fill missing
+    hostGraceTimeout = setTimeout(() => {
+      if (gamePhase !== 'topic') return;
+      for (let i = 0; i < topicsCollected.length; i++) {
+        if (topicsCollected[i] == null || topicsCollected[i] === '') {
+          handleTopicFromPlayer(i, '無題');
+        }
+      }
+    }, 3000);
+  } else if (phase === 'writing' && gameState) {
+    // Grace period: wait for auto-submits, then proxy-submit remaining
+    hostGraceTimeout = setTimeout(() => {
+      if (!gameState || gamePhase !== 'writing') return;
+      const np = gameState.numPlayers;
+      const round = gameState.currentRound;
+      for (let i = 0; i < np; i++) {
+        if (!roundDone.has(i)) {
+          for (let s = 0; s < np; s++) {
+            if (getWriterForStoryAtRound(s, round, np, gameState.shifts) === i) {
+              handlePartFromPlayer(i, s, round, '……', false);
+              break;
+            }
+          }
+        }
+      }
+    }, 3000);
+  }
+  stopCountdown();
+}
+
+// Guest receives timeUp — auto-submit current text
+function guestHandleTimeUp() {
+  if (isHost) return;
+  stopCountdown();
+  if (currentScreenName === 'writing' && gameState && !mySubmitted) {
+    const text = (document.getElementById('write-input').value || '').trim() || '……';
+    const clipped = text.slice(0, CHAR_LIMIT);
+    mySubmitted = true;
+    myLastSubmittedText = clipped;
+    saveDraft();
+    document.getElementById('write-submitted-msg').classList.remove('hidden');
+    setSubmitStatus('sending');
+    document.getElementById('write-submit-btn').textContent = '再提出';
+    sendPartWithRetry(myStoryIndex, gameState.currentRound, clipped, false);
+  } else if (currentScreenName === 'topic' && !myTopicSubmitted) {
+    const topic = (document.getElementById('topic-input').value || '').trim() || '無題';
+    myTopicSubmitted = true;
+    document.getElementById('topic-submitted-msg').classList.remove('hidden');
+    document.getElementById('topic-submit-btn').textContent = '変更';
+    setTopicSubmitStatus('sending');
+    sendTopicWithRetry(topic);
+  }
+}
+
+// Foreground recovery: immediately update countdown
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && countdownInterval) {
+    const prefix = (currentScreenName === 'topic') ? 'topic' : 'write';
+    updateCountdownUI(prefix);
+  }
+});
+
 // ===================== PROGRESS =====================
 function updateWriteProgress(done, total) {
   document.getElementById('write-done').textContent = done;
@@ -2751,6 +2952,7 @@ function restoreStoryFont() {
 }
 
 function showResults() {
+  stopCountdown();
   currentStoryView = 0;
   document.getElementById('results-subtitle').textContent = gameState.stories.length + ' つの物語が完成しました';
   renderThemeSelector();
@@ -2858,6 +3060,7 @@ function abortGameToTitle() {
 
 // ===================== PLAY AGAIN =====================
 function playAgain() {
+  stopCountdown();
   // Save player name for next game
   const myName = isHost ? (players[0] || '') : (players[myIndex] || '');
   if (myName) { try { localStorage.setItem('watashibunko_name', myName); } catch(e) {} }
@@ -2982,6 +3185,7 @@ window.addEventListener('load', () => {
     myIndex = 0;
     roomId = hostSaved.roomId;
     numPages = hostSaved.numPages;
+    timerSec = hostSaved.timerSec || 210;
     players = hostSaved.players || [];
     topicsCollected = (hostSaved.topicsCollected || []).map(t => t == null ? undefined : t);
     gameState = hostSaved.gameState;
@@ -2995,6 +3199,7 @@ window.addEventListener('load', () => {
       document.getElementById('host-room-code').textContent = roomId;
       document.getElementById('host-name').value = players[0] || '';
       renderPageSelect();
+      renderTimerSelect();
       renderHostPlayers();
       showScreen('host');
       document.getElementById('host-name').addEventListener('input', () => {
