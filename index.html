@@ -12,7 +12,7 @@
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
-  const APP_VERSION = 'v2.33';
+  const APP_VERSION = 'v2.34';
   gtag('js', new Date());
   gtag('set', { 'app_version': APP_VERSION });
   gtag('config', 'G-341D8LEXRV');
@@ -1179,37 +1179,55 @@ function generateToken() {
 function generateRotation(np, pages) {
   if (np === 1) return new Array(pages).fill(0);
   if (np === 2) {
-    const s = [];
-    for (let i = 0; i < pages; i++) s.push(i % 2 === 0 ? 1 : 0);
-    return s;
-  }
-  // Build one full cycle of shifts 0..np-1 arranged so:
-  //   - shift 0 is NOT first (topic creator shouldn't write first)
-  //   - no two adjacent shifts are consecutive (varies "previous writer")
-  // Then repeat cycles until we have enough pages.
-  //
-  // Strategy: interleave even and odd shifts.
-  // e.g. np=5: evens=[0,2,4], odds=[1,3] -> cycle=[2,1,4,3,0]
-  // This guarantees no adjacent pair (a, a+1 mod np).
-  const evens = [], odds = [];
-  for (let i = 0; i < np; i++) (i % 2 === 0 ? evens : odds).push(i);
-  // Start with evens (skipping 0), then odds, then 0 at end
-  let cycle = [];
-  for (let i = 1; i < evens.length; i++) cycle.push(evens[i]); // 2,4,6,...
-  for (let i = 0; i < odds.length; i++) cycle.push(odds[i]);    // 1,3,5,...
-  cycle.push(0);                                                  // 0 at end
-
-  // For subsequent cycles, rotate so 0 isn't adjacent to itself across boundary
-  // Build first cycle as above; next cycles use same order but rotated
-  const shifts = [];
-  for (let i = 0; i < pages; i++) {
-    shifts.push(cycle[i % cycle.length]);
+    const first = Math.random() < 0.5 ? 0 : 1;
+    return Array.from({length: pages}, (_, i) => (first + i) % 2);
   }
 
-  // Verify no 0 at position 0 (should be guaranteed by construction)
-  // If pages > np, check the boundary between cycles
-  // cycle ends with 0, next cycle starts with evens[1] (>=2), so no conflict
-  return shifts;
+  function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  // Score: lower = better. Penalize consecutive same shifts and repeated differences.
+  function score(s) {
+    let pen = 0;
+    const diffCounts = {};
+    for (let i = 1; i < s.length; i++) {
+      if (s[i] === s[i - 1]) pen += 1000;
+      const d = ((s[i] - s[i - 1]) % np + np) % np;
+      diffCounts[d] = (diffCounts[d] || 0) + 1;
+    }
+    // Penalize when one difference dominates (same "previous writer" repeats)
+    const vals = Object.values(diffCounts);
+    if (vals.length > 0) pen += Math.max(...vals) * 10;
+    // Bonus for using more distinct differences
+    pen -= Object.keys(diffCounts).length * 5;
+    return pen;
+  }
+
+  const base = Array.from({length: np}, (_, i) => i);
+  let best = null, bestScore = Infinity;
+
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const shifts = [];
+    while (shifts.length < pages) {
+      let perm = shuffle(base);
+      if (shifts.length > 0) {
+        for (let r = 0; r < 15; r++) {
+          if (perm[0] !== shifts[shifts.length - 1]) break;
+          perm = shuffle(base);
+        }
+      }
+      for (const v of perm) { if (shifts.length < pages) shifts.push(v); }
+    }
+    const s = score(shifts);
+    if (s < bestScore) { bestScore = s; best = shifts; }
+  }
+  return best;
 }
 
 function getWriterForStoryAtRound(si, round, np, shifts) {
@@ -2395,6 +2413,11 @@ function handleTopicFromPlayer(pIdx, topic) {
     const np = total;
     const shifts = generateRotation(np, numPages);
     const stories = topicsCollected.map((t, i) => ({ title: t || '無題', parts: [], originalPlayerIndex: i }));
+    // Shuffle story display order so position doesn't reveal authorship
+    for (let i = stories.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [stories[i], stories[j]] = [stories[j], stories[i]];
+    }
     gameState = { stories, currentRound: 0, totalRounds: numPages, shifts, numPlayers: np, players: [...players], anonymous: !!document.getElementById('anonymous-mode').checked };
     gamePhase = 'writing';
     broadcast({ type: 'startWriting', gameState: JSON.parse(JSON.stringify(gameState)) });
