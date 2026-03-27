@@ -12,7 +12,7 @@
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
-  const APP_VERSION = 'v2.37';
+  const APP_VERSION = 'v2.38';
   gtag('js', new Date());
   gtag('set', { 'app_version': APP_VERSION });
   gtag('config', 'G-341D8LEXRV');
@@ -2204,11 +2204,12 @@ function handleGuestMessage(data) {
     } else if (phase === 'results' && gameState) {
       showResults();
     }
-    // Restore countdown timer if active
+    // Restore countdown timer if active (skip if guest already has a running timer to avoid visual jump)
     if (data.timerRemainingSec > 0 && data.timerTotalSec > 0 && (phase === 'topic' || phase === 'writing')) {
-      startCountdown(phase === 'topic' ? 'topic' : 'writing', data.timerRemainingSec);
-      // Override total for correct bar proportion
-      countdownTotal = data.timerTotalSec * 1000;
+      if (!countdownInterval) {
+        startCountdown(phase === 'topic' ? 'topic' : 'writing', data.timerRemainingSec);
+        countdownTotal = data.timerTotalSec * 1000;
+      }
     }
 
   } else if (data.type === 'playerList') {
@@ -2787,6 +2788,7 @@ function hostStartTimer(phase, totalSec) {
   hostTimerTimeout = setTimeout(() => {
     hostEnforceTimeUp(phase);
   }, totalSec * 1000);
+  saveHostState(); // persist timer deadline immediately
 }
 
 function restoreHostTimer(hostSaved, phase) {
@@ -2802,6 +2804,7 @@ function restoreHostTimer(hostSaved, phase) {
   startCountdown(phase, remainingSec);
   countdownTotal = totalMs;
   hostTimerTimeout = setTimeout(() => { hostEnforceTimeUp(phase); }, remaining);
+  saveHostState(); // persist restored timer so double-reload works
 }
 
 function hostEnforceTimeUp(phase) {
