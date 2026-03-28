@@ -12,7 +12,7 @@
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
-  const APP_VERSION = 'v2.40';
+  const APP_VERSION = 'v2.41';
   gtag('js', new Date());
   gtag('set', { 'app_version': APP_VERSION });
   gtag('config', 'G-341D8LEXRV');
@@ -2810,8 +2810,13 @@ function restoreHostTimer(hostSaved, phase) {
 
 function hostEnforceTimeUp(phase) {
   if (!isHost) return;
+  // Stop current timer FIRST — before any handlePartFromPlayer that may start the next round's timer
+  stopCountdown();
   // Notify all guests — they auto-submit current text
   broadcast({ type: 'timeUp' });
+
+  // Capture current round BEFORE any handlePartFromPlayer that might advance it
+  const frozenRound = gameState ? gameState.currentRound : -1;
 
   // Host self-submit immediately (host has local access to text)
   if (phase === 'topic') {
@@ -2823,6 +2828,16 @@ function hostEnforceTimeUp(phase) {
       setTopicSubmitStatus('confirmed');
       handleTopicFromPlayer(0, topic);
     }
+    // If topic phase already completed (all collected), skip grace period
+    if (gamePhase !== 'topic') return;
+    hostGraceTimeout = setTimeout(() => {
+      if (gamePhase !== 'topic') return;
+      for (let i = 0; i < topicsCollected.length; i++) {
+        if (topicsCollected[i] == null || topicsCollected[i] === '') {
+          handleTopicFromPlayer(i, '無題');
+        }
+      }
+    }, 3000);
   } else if (phase === 'writing' && gameState) {
     if (!roundDone.has(0)) {
       const text = (document.getElementById('write-input').value || '').trim() || '……';
@@ -2834,28 +2849,16 @@ function hostEnforceTimeUp(phase) {
       document.getElementById('write-submit-btn').textContent = '再提出';
       handlePartFromPlayer(0, myStoryIndex, gameState.currentRound, clipped, false);
     }
-  }
-
-  // Grace period: wait for guest auto-submits, then proxy-submit remaining
-  if (phase === 'topic') {
+    // If round already advanced after host submit, skip grace period
+    if (!gameState || gamePhase !== 'writing' || gameState.currentRound !== frozenRound) return;
     hostGraceTimeout = setTimeout(() => {
-      if (gamePhase !== 'topic') return;
-      for (let i = 0; i < topicsCollected.length; i++) {
-        if (topicsCollected[i] == null || topicsCollected[i] === '') {
-          handleTopicFromPlayer(i, '無題');
-        }
-      }
-    }, 3000);
-  } else if (phase === 'writing' && gameState) {
-    hostGraceTimeout = setTimeout(() => {
-      if (!gameState || gamePhase !== 'writing') return;
+      if (!gameState || gamePhase !== 'writing' || gameState.currentRound !== frozenRound) return;
       const np = gameState.numPlayers;
-      const round = gameState.currentRound;
       for (let i = 0; i < np; i++) {
         if (!roundDone.has(i)) {
           for (let s = 0; s < np; s++) {
-            if (getWriterForStoryAtRound(s, round, np, gameState.shifts) === i) {
-              handlePartFromPlayer(i, s, round, '……', false);
+            if (getWriterForStoryAtRound(s, frozenRound, np, gameState.shifts) === i) {
+              handlePartFromPlayer(i, s, frozenRound, '……', false);
               break;
             }
           }
@@ -2863,7 +2866,6 @@ function hostEnforceTimeUp(phase) {
       }
     }, 3000);
   }
-  stopCountdown();
 }
 
 // Guest receives timeUp — auto-submit current text
