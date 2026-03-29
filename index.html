@@ -12,7 +12,7 @@
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
-  const APP_VERSION = 'v2.41';
+  const APP_VERSION = 'v2.42';
   gtag('js', new Date());
   gtag('set', { 'app_version': APP_VERSION });
   gtag('config', 'G-341D8LEXRV');
@@ -1250,7 +1250,7 @@ function generateRotation(np, pages) {
     return a;
   }
 
-  // Score: lower = better. Penalize consecutive same shifts and repeated differences.
+  // Score: lower = better. Penalize consecutive same shifts, repeated differences, and short repeat gaps.
   function score(s) {
     let pen = 0;
     const diffCounts = {};
@@ -1264,6 +1264,16 @@ function generateRotation(np, pages) {
     if (vals.length > 0) pen += Math.max(...vals) * 10;
     // Bonus for using more distinct differences
     pen -= Object.keys(diffCounts).length * 5;
+    // Penalize short gaps between same shift value (same player writing same story too soon)
+    // Ideal gap = np. Gap < np means a player knows earlier context.
+    const lastSeen = {};
+    for (let i = 0; i < s.length; i++) {
+      if (lastSeen[s[i]] != null) {
+        const gap = i - lastSeen[s[i]];
+        if (gap < np) pen += (np - gap) * 100;
+      }
+      lastSeen[s[i]] = i;
+    }
     return pen;
   }
 
