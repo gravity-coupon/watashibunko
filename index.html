@@ -12,7 +12,7 @@
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
-  const APP_VERSION = 'v2.43';
+  const APP_VERSION = 'v2.44';
   gtag('js', new Date());
   gtag('set', { 'app_version': APP_VERSION });
   gtag('config', 'G-341D8LEXRV');
@@ -291,7 +291,7 @@
     <h2 class="text-center mb-24" style="font-size:24px;">部屋に参加</h2>
     <div class="mb-20">
       <label class="text-dim" style="font-size:14px;display:block;margin-bottom:6px;">ルームコード</label>
-      <input id="join-room" class="input-field room-input" placeholder="XXXXX" maxlength="5" inputmode="latin" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
+      <input id="join-room" class="input-field room-input" placeholder="XXXXX" maxlength="5" inputmode="latin" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false">
     </div>
     <div class="mb-24">
       <label class="text-dim" style="font-size:14px;display:block;margin-bottom:6px;">あなたの名前</label>
@@ -3265,6 +3265,21 @@ function showCopyFeedback(msg) {
   clearTimeout(el._timer);
   el._timer = setTimeout(() => { el.style.opacity = '0'; }, 2500);
 }
+
+// ===================== ROOM CODE INPUT (iOS 12-key keyboard safe) =====================
+(function() {
+  const el = document.getElementById('join-room');
+  let composing = false;
+  el.addEventListener('compositionstart', () => { composing = true; });
+  el.addEventListener('compositionend', () => {
+    composing = false;
+    el.value = el.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  });
+  el.addEventListener('input', () => {
+    if (composing) return;
+    el.value = el.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  });
+})();
 
 // ===================== AUTO-RESTORE ON LOAD =====================
 window.addEventListener('load', () => {
