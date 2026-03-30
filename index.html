@@ -12,7 +12,7 @@
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
-  const APP_VERSION = 'v2.44';
+  const APP_VERSION = 'v2.45';
   gtag('js', new Date());
   gtag('set', { 'app_version': APP_VERSION });
   gtag('config', 'G-341D8LEXRV');
@@ -1323,7 +1323,7 @@ function showScreen(name) {
   currentScreenName = name;
   screens.forEach(s => document.getElementById('screen-' + s).classList.toggle('hidden', s !== name));
   updateRoomCodeBadge();
-  if (name === 'title') updateRejoinButton();
+  if (name === 'title') { updateRejoinButton(); checkForUpdate(); }
 }
 
 function backToTitle() {
@@ -3363,19 +3363,30 @@ window.addEventListener('load', () => {
   updateRejoinButton();
 });
 
-// ===================== AUTO-RELOAD STALE TAB =====================
-let _lastHiddenAt = 0;
-const STALE_TAB_THRESHOLD = 5 * 60 * 1000; // 5 minutes
+// ===================== AUTO-UPDATE CHECK =====================
+let _lastUpdateCheck = Date.now(); // skip check for first 60s after load
+const UPDATE_CHECK_INTERVAL = 60 * 1000; // minimum 60 seconds between checks
 
+function checkForUpdate() {
+  if (gamePhase !== 'idle' || currentScreenName !== 'title') return;
+  if (Date.now() - _lastUpdateCheck < UPDATE_CHECK_INTERVAL) return;
+  _lastUpdateCheck = Date.now();
+  fetch(location.pathname + '?_v=' + Date.now(), { cache: 'no-store' })
+    .then(r => r.ok ? r.text() : '')
+    .then(html => {
+      if (!html) return;
+      const m = html.match(/APP_VERSION\s*=\s*'([^']+)'/);
+      if (m && m[1] && m[1] !== APP_VERSION) {
+        dbg('Update available: ' + APP_VERSION + ' -> ' + m[1]);
+        location.reload();
+      }
+    })
+    .catch(() => {}); // silently ignore network errors
+}
+
+// Check on tab becoming visible (any screen, but only acts on title)
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') {
-    _lastHiddenAt = Date.now();
-  } else if (document.visibilityState === 'visible' && _lastHiddenAt > 0) {
-    const elapsed = Date.now() - _lastHiddenAt;
-    if (elapsed > STALE_TAB_THRESHOLD && gamePhase === 'idle' && currentScreenName === 'title') {
-      location.reload();
-    }
-  }
+  if (document.visibilityState === 'visible') checkForUpdate();
 });
 </script>
 <div id="version-label" style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#8899aa;opacity:0.7;font-family:monospace;"></div>
