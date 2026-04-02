@@ -12,7 +12,7 @@
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
-  const APP_VERSION = 'v2.45';
+  const APP_VERSION = 'v2.49';
   gtag('js', new Date());
   gtag('set', { 'app_version': APP_VERSION });
   gtag('config', 'G-341D8LEXRV');
@@ -450,14 +450,14 @@ let roomId = "";
 let numPages = 4;
 let timerSec = 0; // default: no limit
 const TIMER_OPTIONS = [
-  { sec: 0,   label: 'なし', desc: '無制限。のんびり' },
-  { sec: 120, label: '2:00', desc: '爆速。駄文上等' },
-  { sec: 150, label: '2:30', desc: '高速。勢いで書く' },
-  { sec: 180, label: '3:00', desc: 'ちょい速。手慣れた人向け' },
-  { sec: 210, label: '3:30', desc: '標準。迷える余裕あり' },
-  { sec: 240, label: '4:00', desc: 'ゆとり。じっくり考える' },
-  { sec: 270, label: '4:30', desc: 'まったり。推敲もできる' },
-  { sec: 300, label: '5:00', desc: '長考。完璧を目指す' },
+  { sec: 0,   label: 'なし', name: '無制限', desc: 'のんびり' },
+  { sec: 120, label: '2:00', name: '爆速', desc: '駄文上等' },
+  { sec: 150, label: '2:30', name: '高速', desc: '勢いで書く' },
+  { sec: 180, label: '3:00', name: 'サクサク', desc: 'もう迷わない' },
+  { sec: 210, label: '3:30', name: 'ちょい速', desc: '手練れ向け' },
+  { sec: 240, label: '4:00', name: '標準', desc: '迷える余裕あり' },
+  { sec: 270, label: '4:30', name: 'まったり', desc: '推敲もできる' },
+  { sec: 300, label: '5:00', name: '長考', desc: '完璧を目指す' },
 ];
 let players = [];
 let topicsCollected = [];
@@ -1288,19 +1288,30 @@ function generateRotation(np, pages) {
       }
       lastSeen[s[i]] = i;
     }
+    // Penalize shift 0 at position 0 (title creator writes first page of own story)
+    if (s[0] === 0) pen += 500;
+    // Penalize ABA pattern (same shift 2 apart — same player writes story again with only 1 gap)
+    if (np > 2) {
+      for (let i = 2; i < s.length; i++) {
+        if (s[i] === s[i - 2]) pen += 200;
+      }
+    }
     return pen;
   }
 
   const base = Array.from({length: np}, (_, i) => i);
   let best = null, bestScore = Infinity;
 
-  for (let attempt = 0; attempt < 80; attempt++) {
+  for (let attempt = 0; attempt < 200; attempt++) {
     const shifts = [];
     while (shifts.length < pages) {
       let perm = shuffle(base);
       if (shifts.length > 0) {
-        for (let r = 0; r < 15; r++) {
-          if (perm[0] !== shifts[shifts.length - 1]) break;
+        const last = shifts[shifts.length - 1];
+        const secondLast = shifts.length >= 2 ? shifts[shifts.length - 2] : -1;
+        for (let r = 0; r < 30; r++) {
+          // Avoid AA (same as last) and ABA (same as second-to-last) at boundary
+          if (perm[0] !== last && (np <= 2 || perm[0] !== secondLast)) break;
           perm = shuffle(base);
         }
       }
@@ -1647,7 +1658,7 @@ function renderTimerSelect() {
   TIMER_OPTIONS.forEach(opt => {
     const btn = document.createElement('button');
     btn.className = 'timer-option' + (opt.sec === timerSec ? ' active' : '');
-    btn.innerHTML = '<span class="timer-label">' + opt.label + '</span><span class="timer-desc">' + opt.desc + '</span>';
+    btn.innerHTML = '<span class="timer-label">' + opt.label + '</span><span class="timer-desc"><strong>' + opt.name + '</strong> ' + opt.desc + '</span>';
     btn.onclick = () => { timerSec = opt.sec; renderTimerSelect(); };
     cont.appendChild(btn);
   });
@@ -2529,9 +2540,14 @@ function handleTopicFromPlayer(pIdx, topic) {
     const shifts = generateRotation(np, numPages);
     const stories = topicsCollected.map((t, i) => ({ title: t || '無題', parts: [], originalPlayerIndex: i }));
     // Shuffle story display order so position doesn't reveal authorship
-    for (let i = stories.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [stories[i], stories[j]] = [stories[j], stories[i]];
+    // Also ensure title creator ≠ first writer after shuffle
+    for (let attempt = 0; attempt < 50; attempt++) {
+      for (let i = stories.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [stories[i], stories[j]] = [stories[j], stories[i]];
+      }
+      const hasCollision = stories.some((s, si) => (si + shifts[0]) % np === s.originalPlayerIndex);
+      if (!hasCollision) break;
     }
     gameState = { stories, currentRound: 0, totalRounds: numPages, shifts, numPlayers: np, players: [...players], anonymous: !!document.getElementById('anonymous-mode').checked, timerSec };
     gamePhase = 'writing';
