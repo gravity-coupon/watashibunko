@@ -3,8 +3,13 @@
     "public": ".",
     "ignore": [
       "firebase.json",
+      ".firebaserc",
       "**/.*",
-      "**/node_modules/**"
+      "**/node_modules/**",
+      "functions/**",
+      "database.rules.json",
+      "README.md",
+      "LICENSE"
     ]
   },
   "functions": [
