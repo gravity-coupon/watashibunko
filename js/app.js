@@ -416,6 +416,11 @@ async function joinAndSubscribe(rid, name) {
   }
   saveLastRoom(rid, name);
   currentRoom = room;
+  // Render synchronously with the snapshot we already fetched, so the
+  // correct screen is visible BEFORE the splash fades out. The subsequent
+  // subscription callback is idempotent — it will re-render with the same
+  // (or newer) data.
+  handleRoomUpdate(room);
   subscribeAndDispatch();
 }
 
@@ -1124,20 +1129,36 @@ function showCopyFeedback(msg) {
   });
 })();
 
+// ===================== SPLASH =====================
+function hideSplash() {
+  const el = document.getElementById('splash');
+  if (!el || el.classList.contains('fade-out')) return;
+  el.classList.add('fade-out');
+  setTimeout(() => { el.style.display = 'none'; }, 350);
+}
+
+// Safety net: if init hangs (e.g. Firebase unreachable), reveal the UI
+// anyway after 10s so the user isn't stuck on the splash forever.
+setTimeout(hideSplash, 10000);
+
 // ===================== AUTO-RESTORE ON LOAD =====================
 window.addEventListener('load', async () => {
-  await whenAuthed();
-  const last = loadLastRoom();
-  if (last && last.roomId && last.name) {
-    try {
-      await joinAndSubscribe(last.roomId, last.name);
-      return;
-    } catch(e) {
-      // Room is gone or join failed — fall through to title
-      clearLastRoom();
+  try {
+    await whenAuthed();
+    const last = loadLastRoom();
+    if (last && last.roomId && last.name) {
+      try {
+        await joinAndSubscribe(last.roomId, last.name);
+        return;
+      } catch(e) {
+        // Room is gone or join failed — fall through to title
+        clearLastRoom();
+      }
     }
+    updateRejoinButton();
+  } finally {
+    hideSplash();
   }
-  updateRejoinButton();
 });
 
 // ===================== AUTO-UPDATE CHECK =====================

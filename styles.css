@@ -167,3 +167,27 @@ textarea.input-field { resize: vertical; min-height: 160px; }
 .flex-center { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
 .flex-col { display: flex; flex-direction: column; gap: 16px; }
 .flex-row { display: flex; gap: 8px; align-items: center; }
+
+/* Splash overlay shown during the brief async init (auth + auto-rejoin)
+   so users don't see the title screen flash before being moved to their
+   actual phase. Hidden by JS once we know what screen to show. */
+#splash {
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(160deg, #1a1a2e 0%, #0f0f23 50%, #1a1033 100%);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.3s ease;
+}
+#splash.fade-out { opacity: 0; pointer-events: none; }
+#splash .splash-inner { text-align: center; animation: splashPulse 1.5s ease-in-out infinite; }
+#splash img {
+  width: 160px; height: 160px; display: block; margin: 0 auto 12px;
+}
+#splash p { font-size: 13px; }
+@keyframes splashPulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
