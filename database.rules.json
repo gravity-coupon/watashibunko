@@ -1,6 +1,87 @@
 {
   "rules": {
-    ".read": "now < 1781276400000",  // 2026-6-13
-    ".write": "now < 1781276400000",  // 2026-6-13
+    "rooms": {
+      ".read": "auth != null",
+      "$rid": {
+        ".read": "auth != null",
+
+        // Three write cases: room creation (host claims it), update (member or
+        // host can modify), and deletion (host only). Non-members joining a
+        // lobby are handled by the more permissive rule at /players below.
+        ".write": "auth != null && ((!data.exists() && newData.exists() && newData.child('meta').child('hostUid').val() == auth.uid) || (data.exists() && newData.exists() && (data.child('players').child(auth.uid).exists() || data.child('meta').child('hostUid').val() == auth.uid)) || (data.exists() && !newData.exists() && data.child('meta').child('hostUid').val() == auth.uid))",
+
+        "meta": {
+          ".validate": "newData.hasChildren(['hostUid', 'numPages', 'timerSec', 'createdAt'])",
+          "hostUid":   { ".validate": "newData.isString() && newData.val().length > 0" },
+          "numPages":  { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 50" },
+          "timerSec":  { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 3600" },
+          "anonymous": { ".validate": "newData.isBoolean()" },
+          "createdAt": { ".validate": "newData.isNumber() && newData.val() > 0" },
+          "$other":    { ".validate": false }
+        },
+
+        "phase": {
+          ".validate": "newData.val() == 'lobby' || newData.val() == 'topic' || newData.val() == 'writing' || newData.val() == 'results'"
+        },
+
+        "round": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 50"
+        },
+
+        "timerEndsAt": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+
+        "shifts": {
+          "$idx": {
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 50"
+          }
+        },
+
+        "players": {
+          // Non-members joining: allow if their own uid is being added/removed.
+          // (Already-members are covered by the room-level .write above.)
+          ".write": "auth != null && (data.child(auth.uid).exists() || newData.child(auth.uid).exists())",
+          "$uid": {
+            ".write": "auth.uid == $uid",
+            ".validate": "newData.hasChildren(['name', 'order'])",
+            "name":     { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
+            "order":    { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 50" },
+            "joinedAt": { ".validate": "newData.isNumber()" },
+            "$other":   { ".validate": false }
+          }
+        },
+
+        "topics": {
+          "$uid": {
+            ".validate": "newData.isString() && newData.val().length <= 100"
+          }
+        },
+
+        "stories": {
+          "$idx": {
+            ".validate": "newData.hasChildren(['title', 'titleAuthorUid'])",
+            "title":          { ".validate": "newData.isString() && newData.val().length <= 100" },
+            "titleAuthorUid": { ".validate": "newData.isString()" },
+            "parts": {
+              "$pidx": {
+                ".validate": "newData.hasChildren(['authorUid', 'text', 'round'])",
+                "authorUid": { ".validate": "newData.isString()" },
+                "text":      { ".validate": "newData.isString() && newData.val().length <= 200" },
+                "round":     { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 50" },
+                "$other":    { ".validate": false }
+              }
+            },
+            "$other": { ".validate": false }
+          }
+        },
+
+        "roundDone": {
+          "$uid": {
+            ".validate": "newData.isBoolean()"
+          }
+        }
+      }
+    }
   }
 }
