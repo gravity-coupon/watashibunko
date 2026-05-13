@@ -1,0 +1,13 @@
+# Firebase web config (copy from js/config.example.js and fill in)
+js/config.js
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Node (in case we add tooling later)
+node_modules/
+.firebase/
+.firebaserc
