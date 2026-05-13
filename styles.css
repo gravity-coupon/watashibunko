@@ -4,6 +4,12 @@ body {
   color: #eee;
   min-height: 100vh;
   background: linear-gradient(160deg, #1a1a2e 0%, #0f0f23 50%, #1a1033 100%);
+  /* Lay out screens in a column so the visible one (siblings are display:none)
+     can vertically center itself via auto margins. When content is taller
+     than the viewport, auto margins resolve to 0 and the screen flows from
+     the top, keeping the top of long screens reachable. */
+  display: flex;
+  flex-direction: column;
 }
 ::selection { background: rgba(233,69,96,0.27); }
 @keyframes fadeIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
@@ -51,8 +57,11 @@ textarea.input-field { resize: vertical; min-height: 160px; }
 .mb-20 { margin-bottom: 20px; }
 .mb-24 { margin-bottom: 24px; }
 .mb-32 { margin-bottom: 32px; }
-.container { max-width: 500px; margin: 0 auto; padding: 40px 20px; }
-.container-wide { max-width: 600px; margin: 0 auto; padding: 40px 20px; }
+/* margin: auto centers both horizontally (cross axis) and vertically (main
+   axis, when there's free space). Falls back gracefully when content is too
+   tall — see body's flex setup above. */
+.container { max-width: 500px; margin: auto; padding: 40px 20px; width: 100%; }
+.container-wide { max-width: 600px; margin: auto; padding: 40px 20px; width: 100%; }
 .hidden { display: none !important; }
 
 .back-btn {
