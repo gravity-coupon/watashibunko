@@ -591,13 +591,13 @@ async function submitTopic() {
 function setTopicSubmitStatus(status) {
   const el = document.getElementById('topic-submitted-text');
   if (status === 'sending') {
-    el.style.color = '#f0c040';
+    el.style.color = '#deb04a';
     el.textContent = '⏳ 送信中...';
   } else if (status === 'error') {
-    el.style.color = '#e94560';
+    el.style.color = '#dc5e4c';
     el.textContent = '✗ 送信失敗。もう一度お試しください。';
   } else {
-    el.style.color = '#4ecdc4';
+    el.style.color = '#6db8a8';
     el.textContent = '✓ 決定済み（他のプレイヤーが決めるまで変更できます）';
   }
 }
@@ -616,12 +616,12 @@ function renderHostTopicStatusInline(room) {
   if (!el) return;
   const ps = playersSorted(room);
   const topics = room.topics || {};
-  let html = '<p style="font-size:12px;color:#8899aa;margin-bottom:6px;font-family:\'Noto Sans JP\',sans-serif;">提出状況：</p><div style="display:flex;flex-wrap:wrap;gap:6px;">';
+  let html = '<p style="font-size:12px;color:#9da3b8;margin-bottom:6px;font-family:\'Noto Sans JP\',sans-serif;">提出状況：</p><div style="display:flex;flex-wrap:wrap;gap:6px;">';
   ps.forEach(p => {
     const done = !!(topics[p.uid] && topics[p.uid] !== '');
-    const color = done ? '#4ecdc4' : '#555';
+    const color = done ? '#6db8a8' : '#555';
     const icon = done ? '✓' : '…';
-    html += '<span style="font-size:12px;padding:3px 8px;border-radius:12px;background:' + (done ? 'rgba(78,205,196,0.15)' : 'rgba(255,255,255,0.05)') + ';color:' + color + ';font-family:\'Noto Sans JP\',sans-serif;">' + icon + ' ' + escHtml(p.name) + '</span>';
+    html += '<span style="font-size:12px;padding:3px 8px;border-radius:12px;background:' + (done ? 'rgba(109,184,168,0.15)' : 'rgba(255,255,255,0.05)') + ';color:' + color + ';font-family:\'Noto Sans JP\',sans-serif;">' + icon + ' ' + escHtml(p.name) + '</span>';
   });
   html += '</div>';
   el.innerHTML = html;
@@ -740,13 +740,13 @@ async function submitPart() {
 function setSubmitStatus(status) {
   const el = document.getElementById('write-submitted-text');
   if (status === 'sending') {
-    el.style.color = '#f0c040';
+    el.style.color = '#deb04a';
     el.textContent = '⏳ 送信中...';
   } else if (status === 'error') {
-    el.style.color = '#e94560';
+    el.style.color = '#dc5e4c';
     el.textContent = '✗ 送信失敗。もう一度お試しください。';
   } else {
-    el.style.color = '#4ecdc4';
+    el.style.color = '#6db8a8';
     el.textContent = '✓ 送信済み（他のプレイヤーが完了するまで再提出できます）';
   }
 }
@@ -764,12 +764,12 @@ function renderHostWriteStatus(room) {
   if (!el) return;
   const ps = playersSorted(room);
   const roundDone = room.roundDone || {};
-  let html = '<p style="font-size:12px;color:#8899aa;margin-bottom:6px;font-family:\'Noto Sans JP\',sans-serif;">提出状況：</p><div style="display:flex;flex-wrap:wrap;gap:6px;">';
+  let html = '<p style="font-size:12px;color:#9da3b8;margin-bottom:6px;font-family:\'Noto Sans JP\',sans-serif;">提出状況：</p><div style="display:flex;flex-wrap:wrap;gap:6px;">';
   ps.forEach(p => {
     const done = !!roundDone[p.uid];
-    const color = done ? '#4ecdc4' : '#555';
+    const color = done ? '#6db8a8' : '#555';
     const icon = done ? '✓' : '…';
-    html += '<span style="font-size:12px;padding:3px 8px;border-radius:12px;background:' + (done ? 'rgba(78,205,196,0.15)' : 'rgba(255,255,255,0.05)') + ';color:' + color + ';font-family:\'Noto Sans JP\',sans-serif;">' + icon + ' ' + escHtml(p.name) + '</span>';
+    html += '<span style="font-size:12px;padding:3px 8px;border-radius:12px;background:' + (done ? 'rgba(109,184,168,0.15)' : 'rgba(255,255,255,0.05)') + ';color:' + color + ';font-family:\'Noto Sans JP\',sans-serif;">' + icon + ' ' + escHtml(p.name) + '</span>';
   });
   html += '</div>';
   el.innerHTML = html;
@@ -829,7 +829,7 @@ function tickTimer() {
     const pct = total > 0 ? (remaining / total) * 100 : 0;
     barEl.style.width = pct + '%';
     barEl.className = 'countdown-fill' + (pct <= 15 ? ' critical' : pct <= 33 ? ' urgent' : '');
-    if (textEl) textEl.style.color = pct <= 15 ? '#e94560' : pct <= 33 ? '#f0c040' : '#4ecdc4';
+    if (textEl) textEl.style.color = pct <= 15 ? '#dc5e4c' : pct <= 33 ? '#deb04a' : '#6db8a8';
   }
   if (remaining <= 0) onTimerExpired(phase);
 }
@@ -900,8 +900,8 @@ function renderThemeSelector() {
   STORY_THEMES.forEach(t => {
     const btn = document.createElement('button');
     btn.title = t.name;
-    btn.style.cssText = 'width:24px;height:24px;border-radius:50%;border:2px solid ' + (t.id === currentTheme.id ? '#f0c040' : 'transparent') + ';cursor:pointer;background:' + t.dot + ';transition:border-color 0.2s;outline:none;padding:0;';
-    btn.onmouseover = () => { if (t.id !== currentTheme.id) btn.style.borderColor = 'rgba(240,192,64,0.4)'; };
+    btn.style.cssText = 'width:24px;height:24px;border-radius:50%;border:2px solid ' + (t.id === currentTheme.id ? '#deb04a' : 'transparent') + ';cursor:pointer;background:' + t.dot + ';transition:border-color 0.2s;outline:none;padding:0;';
+    btn.onmouseover = () => { if (t.id !== currentTheme.id) btn.style.borderColor = 'rgba(222,176,74,0.4)'; };
     btn.onmouseout = () => { if (t.id !== currentTheme.id) btn.style.borderColor = 'transparent'; };
     btn.onclick = () => { applyTheme(t.id); };
     cont.appendChild(btn);
