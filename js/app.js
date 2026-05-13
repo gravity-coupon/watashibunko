@@ -920,7 +920,10 @@ function applyTheme(themeId) {
 function restoreTheme() {
   try {
     const saved = localStorage.getItem(LS_THEME);
-    if (saved) { applyTheme(saved); return; }
+    if (saved && STORY_THEMES.some(t => t.id === saved)) {
+      applyTheme(saved);
+      return;
+    }
   } catch(e) {}
   applyTheme('midnight');
 }
