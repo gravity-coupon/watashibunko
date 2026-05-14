@@ -21,6 +21,7 @@ import {
   startGame as dbStartGame,
   submitTopic as dbSubmitTopic, submitPart as dbSubmitPart,
   pokeTimerExpiry, abortGame as dbAbortGame, disbandRoom,
+  kickPlayer as dbKickPlayer,
   playersSorted, playerAtOrder,
 } from './db.js';
 
@@ -159,6 +160,27 @@ function showRoomCopyFeedback(msg) {
   el.textContent = msg; el.style.opacity = '1';
   clearTimeout(el._timer);
   el._timer = setTimeout(() => { el.style.opacity = '0'; }, 2000);
+}
+
+// Non-blocking notification surfaced on the title screen. Used instead of
+// alert() because alert() in a backgrounded tab gets deferred by the browser
+// and then pops up at confusing moments (e.g., right after the user tries to
+// join a different room).
+let _notifTimer = null;
+function showTitleNotification(message) {
+  const el = document.getElementById('title-notification');
+  if (!el) return;
+  el.textContent = message;
+  el.classList.remove('hidden');
+  el.onclick = () => {
+    el.classList.add('hidden');
+    if (_notifTimer) { clearTimeout(_notifTimer); _notifTimer = null; }
+  };
+  if (_notifTimer) clearTimeout(_notifTimer);
+  _notifTimer = setTimeout(() => {
+    el.classList.add('hidden');
+    _notifTimer = null;
+  }, 6000);
 }
 
 // ===================== RESET / NAVIGATION =====================
@@ -436,15 +458,15 @@ let _enteredPhase = null;  // last phase we transitioned into (for one-shot setu
 
 function handleRoomUpdate(room) {
   if (room === null) {
-    // Room was deleted/disbanded externally
-    if (myKind !== 'none' && currentScreenName !== 'title') {
-      alert('部屋が解散されました');
-    }
+    // Room was deleted/disbanded externally — show notification on title rather
+    // than alert(), which would be deferred if our tab was in the background.
+    const wasActive = myKind !== 'none' && currentScreenName !== 'title';
     unsubFromRoom();
     roomId = null;
     resetLocalGameState();
     clearLastRoom();
     showScreen('title');
+    if (wasActive) showTitleNotification('部屋が解散されました');
     return;
   }
   currentRoom = room;
@@ -459,6 +481,17 @@ function handleRoomUpdate(room) {
     } else if (myKind === 'none') {
       myKind = 'player';
     }
+  }
+
+  // If the host kicked me, bail out to the title screen. Excludes the host
+  // themselves (defensive — UI doesn't allow self-kick anyway). Notification
+  // (not alert) so the message doesn't get deferred by a backgrounded tab.
+  const me = room.players && room.players[myUid()];
+  if (me && me.kicked && (!room.meta || room.meta.hostUid !== myUid())) {
+    _localCleanup();
+    showScreen('title');
+    showTitleNotification('ホストによってルームから退出させられました');
+    return;
   }
 
   // Sync form state if host
@@ -603,9 +636,12 @@ function setTopicSubmitStatus(status) {
 }
 
 function updateTopicProgress(room) {
-  const total = numPlayers();
+  // Exclude any kicked players (kick is currently writing-phase-only so this
+  // is defensive, but keeps the count meaningful if that ever changes).
+  const active = playersSorted(room).filter(p => !p.kicked);
+  const total = active.length;
   const topics = room.topics || {};
-  const done = Object.values(topics).filter(t => t && t !== '').length;
+  const done = active.filter(p => topics[p.uid] && topics[p.uid] !== '').length;
   document.getElementById('topic-done').textContent = done;
   document.getElementById('topic-total').textContent = total;
   document.getElementById('topic-progress').style.width = total > 0 ? (done / total * 100) + '%' : '0%';
@@ -752,8 +788,12 @@ function setSubmitStatus(status) {
 }
 
 function updateWriteProgress(room) {
-  const total = numPlayers();
-  const done = Object.values(room.roundDone || {}).filter(v => v === true).length;
+  // Only count active (non-kicked) players — they're the ones whose submissions
+  // are gating round advancement.
+  const active = playersSorted(room).filter(p => !p.kicked);
+  const total = active.length;
+  const roundDone = room.roundDone || {};
+  const done = active.filter(p => roundDone[p.uid] === true).length;
   document.getElementById('write-done').textContent = done;
   document.getElementById('write-total').textContent = total;
   document.getElementById('write-progress').style.width = total > 0 ? (done / total * 100) + '%' : '0%';
@@ -764,16 +804,53 @@ function renderHostWriteStatus(room) {
   if (!el) return;
   const ps = playersSorted(room);
   const roundDone = room.roundDone || {};
-  let html = '<p style="font-size:12px;color:#9da3b8;margin-bottom:6px;font-family:\'Noto Sans JP\',sans-serif;">提出状況：</p><div style="display:flex;flex-wrap:wrap;gap:6px;">';
+  const myU = myUid();
+  let html = '<p style="font-size:12px;color:#9da3b8;margin-bottom:6px;font-family:\'Noto Sans JP\',sans-serif;">提出状況：<span style="color:#9da3b8;font-size:11px;margin-left:6px;opacity:0.7;">（プレイヤー名クリックでキック）</span></p><div style="display:flex;flex-wrap:wrap;gap:6px;">';
   ps.forEach(p => {
+    const isKicked = !!p.kicked;
+    const isMe = p.uid === myU;
     const done = !!roundDone[p.uid];
-    const color = done ? '#6db8a8' : '#555';
-    const icon = done ? '✓' : '…';
-    html += '<span style="font-size:12px;padding:3px 8px;border-radius:12px;background:' + (done ? 'rgba(109,184,168,0.15)' : 'rgba(255,255,255,0.05)') + ';color:' + color + ';font-family:\'Noto Sans JP\',sans-serif;">' + icon + ' ' + escHtml(p.name) + '</span>';
+    let color, icon, bg, extraStyle = '';
+    if (isKicked) {
+      color = '#666'; icon = '✕'; bg = 'rgba(255,255,255,0.03)';
+      extraStyle = 'text-decoration:line-through;';
+    } else if (done) {
+      color = '#6db8a8'; icon = '✓'; bg = 'rgba(109,184,168,0.15)';
+    } else {
+      color = '#888'; icon = '…'; bg = 'rgba(255,255,255,0.05)';
+    }
+    const clickable = !isKicked && !isMe;
+    const baseStyle = 'font-size:12px;padding:3px 8px;border-radius:12px;background:' + bg + ';color:' + color + ';font-family:\'Noto Sans JP\',sans-serif;' + extraStyle;
+    if (clickable) {
+      html += '<span data-kick-uid="' + escHtml(p.uid) + '" data-kick-name="' + escHtml(p.name) + '" style="' + baseStyle + 'cursor:pointer;" title="クリックでキック">' + icon + ' ' + escHtml(p.name) + '</span>';
+    } else {
+      html += '<span style="' + baseStyle + '">' + icon + ' ' + escHtml(p.name) + '</span>';
+    }
   });
   html += '</div>';
   el.innerHTML = html;
 }
+
+// Delegated click listener for kick badges (rendered as <span data-kick-uid=...>).
+// Set up once at module init; works regardless of how many times the host
+// status panel re-renders.
+document.addEventListener('click', (e) => {
+  const target = e.target.closest && e.target.closest('[data-kick-uid]');
+  if (!target) return;
+  if (!isHost() || !roomId) return;
+  const uid = target.getAttribute('data-kick-uid');
+  const name = target.getAttribute('data-kick-name') || '';
+  if (uid === myUid()) return; // defensive
+  const ok = confirm(
+    '「' + name + '」をキックしますか？\n\n' +
+    '・このプレイヤーのこれ以降の執筆は省略され、物語はその分短くなります。\n' +
+    '・キックは取り消しできません。'
+  );
+  if (!ok) return;
+  dbKickPlayer(roomId, uid).catch((err) => {
+    alert('キックに失敗しました: ' + (err && err.message || err));
+  });
+});
 
 // ===================== TIMER =====================
 let _tickInterval = null;

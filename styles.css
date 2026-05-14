@@ -189,6 +189,29 @@ textarea.input-field { resize: vertical; min-height: 160px; }
 .flex-col { display: flex; flex-direction: column; gap: 16px; }
 .flex-row { display: flex; gap: 8px; align-items: center; }
 
+/* Toast notification used for "you were kicked" / "room disbanded".
+   Position: fixed at top center, auto-dismissed by JS. Replaces alert()
+   which gets queued by browsers when the tab is in the background and
+   then fires at confusing moments. */
+#title-notification {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #dc5e4c, #b04438);
+  color: #fff;
+  padding: 12px 24px;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  font-size: 14px;
+  z-index: 1000;
+  cursor: pointer;
+  font-family: 'Noto Sans JP', sans-serif;
+  max-width: 90%;
+  text-align: center;
+  animation: fadeIn 0.3s ease;
+}
+
 /* Splash overlay shown during the brief async init (auth + auto-rejoin)
    so users don't see the title screen flash before being moved to their
    actual phase. Hidden by JS once we know what screen to show. */

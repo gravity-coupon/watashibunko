@@ -293,23 +293,26 @@ async function maybeAdvanceFromWriting(roomId) {
     if (!room || room.phase !== 'writing') return room;
     const players = room.players || {};
     const roundDone = room.roundDone || {};
-    const uids = Object.keys(players);
-    if (uids.length === 0) return room;
+    const allUids = Object.keys(players);
+    // Active players = not kicked. Only these count toward round completion;
+    // kicked players' would-be slots are simply omitted from the story.
+    const activeUids = allUids.filter(u => !players[u].kicked);
+    if (activeUids.length === 0) return room;
 
-    const doneCount = Object.values(roundDone).filter(v => v === true).length;
+    const doneCount = activeUids.filter(u => roundDone[u] === true).length;
     const timerExpiredWithGrace =
       room.timerEndsAt > 0 && Date.now() > room.timerEndsAt + 3000;
-    if (doneCount < uids.length && !timerExpiredWithGrace) return room;
+    if (doneCount < activeUids.length && !timerExpiredWithGrace) return room;
 
-    // Fill in placeholder parts for any missing players (timer-driven)
-    if (doneCount < uids.length) {
-      const np = uids.length;
-      const ordered = uids
-        .map(u => ({ uid: u, order: players[u].order }))
-        .sort((a, b) => a.order - b.order);
-      uids.forEach(u => {
+    // Fill in placeholder parts for any active players who didn't submit before
+    // the timer expired. Kicked players are NOT filled in — that's the whole
+    // point of the kick (their story slot stays empty, story gets shorter).
+    if (doneCount < activeUids.length) {
+      // `np` is total player count (kicked included): shifts were computed
+      // against this, and player order indices are stable, so we keep using it.
+      const np = allUids.length;
+      activeUids.forEach(u => {
         if (!roundDone[u]) {
-          // Figure out which story this player should write
           const writerOrder = players[u].order;
           for (let si = 0; si < np; si++) {
             if ((si + room.shifts[room.round]) % np === writerOrder) {
@@ -350,6 +353,16 @@ async function maybeAdvanceFromWriting(roomId) {
 export async function pokeTimerExpiry(roomId, phase) {
   if (phase === 'topic') await maybeAdvanceFromTopic(roomId);
   else if (phase === 'writing') await maybeAdvanceFromWriting(roomId);
+}
+
+// Host kicks a player by flagging them as kicked. Their submissions stop
+// counting toward round advancement and the timer-driven placeholder filler
+// skips them, so their would-be parts are omitted from the story (the story
+// just becomes shorter by that much). We trigger an advance check immediately
+// in case the kicked player was the only one blocking progression.
+export async function kickPlayer(roomId, uid) {
+  await set(ref(db, `rooms/${roomId}/players/${uid}/kicked`), true);
+  await maybeAdvanceFromWriting(roomId);
 }
 
 // Host aborts the game mid-play — moves to results immediately.

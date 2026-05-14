@@ -12,7 +12,7 @@
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
-  window.APP_VERSION = 'v3.00';
+  window.APP_VERSION = 'v3.02';
   gtag('js', new Date());
   gtag('set', { 'app_version': window.APP_VERSION });
   gtag('config', 'G-341D8LEXRV');
@@ -263,6 +263,11 @@
     <button class="btn btn-gold" onclick="playAgain()">もう一度遊ぶ</button>
   </div>
 </div>
+
+<!-- Toast-style notification surfaced after the user is kicked or the room is
+     disbanded. Replaces alert() so the message isn't deferred when the tab
+     was in the background at the time of the event. -->
+<div id="title-notification" class="hidden"></div>
 
 <div id="version-label" style="position:fixed;bottom:8px;right:12px;font-size:11px;color:#9da3b8;opacity:0.7;font-family:monospace;"></div>
 <div id="room-code-badge" style="position:fixed;bottom:8px;left:12px;font-size:12px;color:#deb04a;opacity:0.7;font-family:'Nunito',sans-serif;font-weight:700;display:none;cursor:pointer;" onclick="copyRoomCodeBadge()" title="クリックでコピー"></div>

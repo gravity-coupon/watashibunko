@@ -48,6 +48,7 @@
             "name":     { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
             "order":    { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 50" },
             "joinedAt": { ".validate": "newData.isNumber()" },
+            "kicked":   { ".validate": "newData.isBoolean()" },
             "$other":   { ".validate": false }
           }
         },
